@@ -1,0 +1,34 @@
+/summon dristmechanic:totebot
+/effect give Dev minecraft:speed infinite 20
+/effect clear
+/summon dristmechanic:totebot
+/effect give Dev minecraft:regeneration infinite 250 true
+/summon dristmechanic:totebot
+/kill @e[type=item]
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/tick rate 9999
+/summon dristmechanic:totebot
+/tick rate 9999
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
