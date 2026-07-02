@@ -7,6 +7,7 @@ import java.util.EnumSet;
 
 public class DelayedMeleeAttackGoal extends Goal {
     private final Mob mob;
+    private LivingEntity target;
     private final double speedModifier;
     private final boolean followingTargetEvenIfNotSeen;
     private int attackCooldown;
@@ -27,7 +28,11 @@ public class DelayedMeleeAttackGoal extends Goal {
     @Override
     public boolean canUse() {
         LivingEntity target = this.mob.getTarget();
-        return target != null && target.isAlive();
+        if (target == null || !target.isAlive()) {
+            return false;
+        }
+        this.target = target;
+        return true;
     }
 
     @Override
@@ -52,49 +57,44 @@ public class DelayedMeleeAttackGoal extends Goal {
 
     @Override
     public void stop() {
-        this.mob.setAggressive(false);
+        this.target = null;
+        this.mob.setAggressive(false); // важно! сбрасываем агрессию, когда цель потеряна
         this.mob.getNavigation().stop();
     }
 
     @Override
     public void tick() {
-        LivingEntity target = this.mob.getTarget();
-        if (target == null) {
+        if (this.target == null) {
             return;
         }
 
-        boolean canSee = this.mob.getSensing().hasLineOfSight(target);
+        boolean canSee = this.mob.getSensing().hasLineOfSight(this.target);
         if (canSee) {
-            this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
+            this.mob.getLookControl().setLookAt(this.target, 30.0F, 30.0F);
         }
 
         if (--this.ticksUntilNextPathRecalculation <= 0) {
             this.ticksUntilNextPathRecalculation = 4 + this.mob.getRandom().nextInt(7);
-            this.mob.getNavigation().moveTo(target, this.speedModifier);
+            this.mob.getNavigation().moveTo(this.target, this.speedModifier);
         }
 
-        double distanceSqr = this.mob.distanceToSqr(target.getX(), target.getY(), target.getZ());
+        double distanceSqr = this.mob.distanceToSqr(this.target.getX(), this.target.getY(), this.target.getZ());
 
         // Если в радиусе атаки и кулдаун прошёл – начинаем атаку
         if (distanceSqr <= this.attackReachSqr && this.attackCooldown <= 0) {
             this.attackDelay = this.attackDelayTicks;
-            this.attackCooldown = 20; // базовый кулдаун между атаками
-
-            // Включаем анимацию атаки через наш метод
-            if (this.mob instanceof TotebotEntity totebot) {
-                totebot.startAttackAnimation();
-            }
-            // Также вызываем swing, чтобы было видно взмах руки (опционально)
+            this.attackCooldown = 20; // базовый кулдаун
+            // Устанавливаем swinging, чтобы запустить анимацию атаки в основном классе
             this.mob.swing(this.mob.getUsedItemHand());
         }
 
-        // Задержка перед нанесением урона
+        // Задержка перед уроном
         if (this.attackDelay > 0) {
             this.attackDelay--;
-            if (this.attackDelay == 0 && target.isAlive()) {
-                double currentDist = this.mob.distanceToSqr(target.getX(), target.getY(), target.getZ());
+            if (this.attackDelay == 0 && this.target != null && this.target.isAlive()) {
+                double currentDist = this.mob.distanceToSqr(this.target.getX(), this.target.getY(), this.target.getZ());
                 if (currentDist <= this.attackReachSqr) {
-                    this.mob.doHurtTarget(target);
+                    this.mob.doHurtTarget(this.target);
                 }
             }
         }

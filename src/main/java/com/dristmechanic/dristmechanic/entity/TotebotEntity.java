@@ -1,6 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -18,7 +19,8 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class TotebotEntity extends Monster implements GeoEntity {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-    private boolean isAttacking = false; // флаг, что сейчас проигрывается атака
+    private int attackTimer = 0; // таймер атаки (если >0, анимация атаки проигрывается)
+    private static final int ATTACK_ANIMATION_DURATION = 14; // длительность анимации атаки в тиках
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
         super(entityType, level);
@@ -38,7 +40,7 @@ public class TotebotEntity extends Monster implements GeoEntity {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        // Используем наш кастомный Goal с задержкой
+        // Используем кастомную атаку с задержкой, которая будет устанавливать swinging и таймер
         this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(this, 1.0, true, 8));
 
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
@@ -51,36 +53,44 @@ public class TotebotEntity extends Monster implements GeoEntity {
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        AnimationController<TotebotEntity> controller = new AnimationController<>(this, "main_controller", 1, event -> {
-            // Приоритет: анимация атаки
-            if (isAttacking) {
+        // ОДИН контроллер для всех анимаций
+        controllers.add(new AnimationController<>(this, "main_controller", 1, this::mainController));
+    }
+
+    private <E extends TotebotEntity> PlayState mainController(final AnimationState<E> event) {
+        // Приоритет: атака
+        if (this.attackTimer > 0) {
+            // Если анимация атаки не запущена или остановилась, запускаем её
+            if (event.getController().getAnimationState() == AnimationController.State.STOPPED) {
                 event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotattack"));
-                return PlayState.CONTINUE;
             }
-
-            // Движение
-            if (event.isMoving()) {
-                if (this.isAggressive()) {
-                    event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotrun"));
-                } else {
-                    event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotwalk"));
-                }
-                return PlayState.CONTINUE;
-            }
-
-            // Idle
-            event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotidle"));
             return PlayState.CONTINUE;
-        });
+        }
 
-        // Сбрасываем флаг, когда анимация атаки завершилась
-        controller.setAnimationFinishCallback(event -> {
-            if (isAttacking) {
-                isAttacking = false;
+        // Если swing true, значит началась новая атака – запускаем таймер и анимацию
+        if (this.swinging) {
+            this.attackTimer = ATTACK_ANIMATION_DURATION;
+            event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotattack"));
+            this.swinging = false; // сбрасываем, чтобы не повторять
+            return PlayState.CONTINUE;
+        }
+
+        // Движение (бег/ходьба)
+        boolean isMoving = event.isMoving();
+        boolean isAggressive = this.isAggressive();
+
+        if (isMoving) {
+            if (isAggressive) {
+                event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotrun"));
+            } else {
+                event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotwalk"));
             }
-        });
+            return PlayState.CONTINUE;
+        }
 
-        controllers.add(controller);
+        // Idle
+        event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotidle"));
+        return PlayState.CONTINUE;
     }
 
     @Override
@@ -88,16 +98,25 @@ public class TotebotEntity extends Monster implements GeoEntity {
         return this.cache;
     }
 
-    // Метод для включения атаки (вызывается из DelayedMeleeAttackGoal)
-    public void startAttackAnimation() {
-        this.isAttacking = true;
+    @Override
+    public int getCurrentSwingDuration() {
+        return ATTACK_ANIMATION_DURATION;
     }
 
     @Override
     public void tick() {
         super.tick();
-        // Можно менять скорость в зависимости от агрессии (если нужно)
-        double speed = this.isAggressive() ? 0.45 : 0.35;
-        this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
+
+        // Уменьшаем таймер атаки
+        if (this.attackTimer > 0) {
+            this.attackTimer--;
+        }
+
+        // Скорость
+        if (this.isAggressive()) {
+            this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.4);
+        } else {
+            this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.4);
+        }
     }
 }
