@@ -1,7 +1,9 @@
 package com.dristmechanic.dristmechanic.entity;
 
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -17,13 +19,19 @@ import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.*;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
-public class TotebotEntity extends Monster implements GeoEntity {
+public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttacker {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-    private int attackTimer = 0; // таймер атаки (если >0, анимация атаки проигрывается)
-    private static final int ATTACK_ANIMATION_DURATION = 14; // длительность анимации атаки в тиках
+
+    private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
         super(entityType, level);
+    }
+
+    @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(ATTACKING, false);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -39,58 +47,56 @@ public class TotebotEntity extends Monster implements GeoEntity {
 
     @Override
     protected void registerGoals() {
+        // ==========================================
+        // GOAL SELECTOR (Действия и движение моба)
+        // ==========================================
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        // Используем кастомную атаку с задержкой, которая будет устанавливать swinging и таймер
-        this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(this, 1.0, true, 8));
 
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
-        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
+        // 1. Атака (высший приоритет среди действий)
+        this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(this, 1.0, true, 9, 2.0));
 
+        // 2. Разрушение блоков при застревании (false = без дропа)
+        this.goalSelector.addGoal(2, new StuckBlockBreakerGoal(this, false));
+
+        // 3. Уничтожение урожая
+        this.goalSelector.addGoal(3, new RemoveCropGoal(this, 0.8, 16, 2));
+
+        // 5. Бродилка (низший приоритет)
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
+
+        // ==========================================
+        // TARGET SELECTOR (Выбор целей для атаки)
+        // ==========================================
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // ОДИН контроллер для всех анимаций
-        controllers.add(new AnimationController<>(this, "main_controller", 1, this::mainController));
-    }
+        // transitionLengthTicks увеличен до 5 для плавного смешивания (blend) анимаций
+        controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
 
-    private <E extends TotebotEntity> PlayState mainController(final AnimationState<E> event) {
-        // Приоритет: атака
-        if (this.attackTimer > 0) {
-            // Если анимация атаки не запущена или остановилась, запускаем её
-            if (event.getController().getAnimationState() == AnimationController.State.STOPPED) {
-                event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotattack"));
+            // 1. Приоритет атаки.
+            if (this.isAttacking()) {
+                return event.setAndContinue(RawAnimation.begin().thenPlayAndHold("totebotattack"));
             }
-            return PlayState.CONTINUE;
-        }
 
-        // Если swing true, значит началась новая атака – запускаем таймер и анимацию
-        if (this.swinging) {
-            this.attackTimer = ATTACK_ANIMATION_DURATION;
-            event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotattack"));
-            this.swinging = false; // сбрасываем, чтобы не повторять
-            return PlayState.CONTINUE;
-        }
+            // 2. Надежная проверка движения.
+            boolean isMoving = event.isMoving() || this.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4D;
 
-        // Движение (бег/ходьба)
-        boolean isMoving = event.isMoving();
-        boolean isAggressive = this.isAggressive();
-
-        if (isMoving) {
-            if (isAggressive) {
-                event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotrun"));
-            } else {
-                event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotwalk"));
+            if (isMoving) {
+                if (this.isAggressive()) {
+                    return event.setAndContinue(RawAnimation.begin().thenLoop("totebotrun"));
+                } else {
+                    return event.setAndContinue(RawAnimation.begin().thenLoop("totebotwalk"));
+                }
             }
-            return PlayState.CONTINUE;
-        }
 
-        // Idle
-        event.getController().setAnimation(RawAnimation.begin().thenPlay("totebotidle"));
-        return PlayState.CONTINUE;
+            // 3. Состояние покоя
+            return event.setAndContinue(RawAnimation.begin().thenLoop("totebotidle"));
+        }));
     }
 
     @Override
@@ -98,25 +104,37 @@ public class TotebotEntity extends Monster implements GeoEntity {
         return this.cache;
     }
 
+    public boolean isAttacking() {
+        return this.entityData.get(ATTACKING);
+    }
+
+    public void setAttacking(boolean attacking) {
+        this.entityData.set(ATTACKING, attacking);
+    }
+
+    // --- Реализация интерфейса IAnimatedAttacker ---
+
     @Override
-    public int getCurrentSwingDuration() {
-        return ATTACK_ANIMATION_DURATION;
+    public void setAttackingState(boolean attacking) {
+        this.setAttacking(attacking);
+    }
+
+    @Override
+    public boolean isAttackingState() {
+        // Позволяет StuckBlockBreakerGoal узнать, не замахнулся ли моб на игрока
+        return this.isAttacking();
+    }
+
+    @Override
+    public int getAttackAnimationLength() {
+        // 0.6875 сек * 20 = 13.75 -> 14 тиков
+        return 14;
     }
 
     @Override
     public void tick() {
         super.tick();
-
-        // Уменьшаем таймер атаки
-        if (this.attackTimer > 0) {
-            this.attackTimer--;
-        }
-
-        // Скорость
-        if (this.isAggressive()) {
-            this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.4);
-        } else {
-            this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.4);
-        }
+        double speed = this.isAggressive() ? 0.37 : 0.32;
+        this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
     }
 }

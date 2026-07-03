@@ -1,17 +1,4 @@
 /summon dristmechanic:totebot
-/effect give Dev minecraft:speed infinite 20
-/effect clear
-/summon dristmechanic:totebot
-/effect give Dev minecraft:regeneration infinite 250 true
-/summon dristmechanic:totebot
-/kill @e[type=item]
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/tick rate 9999
-/summon dristmechanic:totebot
-/tick rate 9999
-/summon dristmechanic:totebot
 /tick rate 9999
 /tick rate 20
 /summon dristmechanic:totebot
@@ -32,3 +19,32 @@
 /tick rate 20
 /summon dristmechanic:totebot
 /tick rate 9999
+/gamerule doDaylightCycle false
+/tick rate 9
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 9
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/tick rate 2
+/tick rate 20
+/tick rate 2
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/fill ~ ~ ~ ~50 ~ ~50 minecraft:farmland
+/fill ~ ~ ~ ~50 ~ ~50 minecraft:potatoes
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/fill ~ ~ ~ ~50 ~ ~50 minecraft:farmland
+/fill ~ ~ ~ ~50 ~ ~50 minecraft:potatoes
+/summon dristmechanic:totebot

@@ -7,7 +7,6 @@ import java.util.EnumSet;
 
 public class DelayedMeleeAttackGoal extends Goal {
     private final Mob mob;
-    private LivingEntity target;
     private final double speedModifier;
     private final boolean followingTargetEvenIfNotSeen;
     private int attackCooldown;
@@ -16,23 +15,25 @@ public class DelayedMeleeAttackGoal extends Goal {
     private final double attackReachSqr;
     private int ticksUntilNextPathRecalculation;
 
-    public DelayedMeleeAttackGoal(Mob mob, double speedModifier, boolean followingTargetEvenIfNotSeen, int attackDelayTicks) {
+    private int attackAnimationTicks;
+
+    /**
+     * @param attackDelayTicks Задержка в тиках до нанесения урона (должна совпадать с кадром удара в BlockBench)
+     * @param attackReach Радиус атаки в блоках (например, 1.5)
+     */
+    public DelayedMeleeAttackGoal(Mob mob, double speedModifier, boolean followingTargetEvenIfNotSeen, int attackDelayTicks, double attackReach) {
         this.mob = mob;
         this.speedModifier = speedModifier;
         this.followingTargetEvenIfNotSeen = followingTargetEvenIfNotSeen;
         this.attackDelayTicks = attackDelayTicks;
-        this.attackReachSqr = 2.25; // 1.5 блока
+        this.attackReachSqr = attackReach * attackReach;
         this.setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
     }
 
     @Override
     public boolean canUse() {
         LivingEntity target = this.mob.getTarget();
-        if (target == null || !target.isAlive()) {
-            return false;
-        }
-        this.target = target;
-        return true;
+        return target != null && target.isAlive();
     }
 
     @Override
@@ -52,55 +53,75 @@ public class DelayedMeleeAttackGoal extends Goal {
         this.attackCooldown = 0;
         this.attackDelay = 0;
         this.ticksUntilNextPathRecalculation = 0;
+        this.attackAnimationTicks = 0;
         this.mob.setAggressive(true);
     }
 
     @Override
     public void stop() {
-        this.target = null;
-        this.mob.setAggressive(false); // важно! сбрасываем агрессию, когда цель потеряна
+        this.mob.setAggressive(false);
         this.mob.getNavigation().stop();
+        if (this.mob instanceof IAnimatedAttacker attacker) {
+            attacker.setAttackingState(false);
+        }
     }
 
     @Override
     public void tick() {
-        if (this.target == null) {
+        LivingEntity target = this.mob.getTarget();
+        if (target == null) {
             return;
         }
 
-        boolean canSee = this.mob.getSensing().hasLineOfSight(this.target);
+        boolean canSee = this.mob.getSensing().hasLineOfSight(target);
         if (canSee) {
-            this.mob.getLookControl().setLookAt(this.target, 30.0F, 30.0F);
+            this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
         }
 
-        if (--this.ticksUntilNextPathRecalculation <= 0) {
+        double distanceSqr = this.mob.distanceToSqr(target.getX(), target.getY(), target.getZ());
+        boolean isWithinReach = distanceSqr <= this.attackReachSqr;
+
+        // Остановка навигации при входе в зону атаки (исправляет физический фриз)
+        if (isWithinReach) {
+            this.mob.getNavigation().stop();
+        } else if (--this.ticksUntilNextPathRecalculation <= 0) {
             this.ticksUntilNextPathRecalculation = 4 + this.mob.getRandom().nextInt(7);
-            this.mob.getNavigation().moveTo(this.target, this.speedModifier);
+            this.mob.getNavigation().moveTo(target, this.speedModifier);
         }
 
-        double distanceSqr = this.mob.distanceToSqr(this.target.getX(), this.target.getY(), this.target.getZ());
-
-        // Если в радиусе атаки и кулдаун прошёл – начинаем атаку
-        if (distanceSqr <= this.attackReachSqr && this.attackCooldown <= 0) {
+        if (isWithinReach && this.attackCooldown <= 0) {
             this.attackDelay = this.attackDelayTicks;
-            this.attackCooldown = 20; // базовый кулдаун
-            // Устанавливаем swinging, чтобы запустить анимацию атаки в основном классе
+            this.attackCooldown = 14;
+
+            // Запуск анимации через универсальный интерфейс
+            if (this.mob instanceof IAnimatedAttacker attacker) {
+                attacker.setAttackingState(true);
+                this.attackAnimationTicks = attacker.getAttackAnimationLength();
+            }
+
             this.mob.swing(this.mob.getUsedItemHand());
         }
 
-        // Задержка перед уроном
         if (this.attackDelay > 0) {
             this.attackDelay--;
-            if (this.attackDelay == 0 && this.target != null && this.target.isAlive()) {
-                double currentDist = this.mob.distanceToSqr(this.target.getX(), this.target.getY(), this.target.getZ());
+            if (this.attackDelay == 0 && target.isAlive()) {
+                double currentDist = this.mob.distanceToSqr(target.getX(), target.getY(), target.getZ());
                 if (currentDist <= this.attackReachSqr) {
-                    this.mob.doHurtTarget(this.target);
+                    this.mob.doHurtTarget(target);
                 }
             }
         }
 
         if (this.attackCooldown > 0) {
             this.attackCooldown--;
+        }
+
+        // Автоматический сброс флага анимации по таймеру
+        if (this.attackAnimationTicks > 0) {
+            this.attackAnimationTicks--;
+            if (this.attackAnimationTicks == 0 && this.mob instanceof IAnimatedAttacker attacker) {
+                attacker.setAttackingState(false);
+            }
         }
     }
 }
