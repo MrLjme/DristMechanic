@@ -22,7 +22,6 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttacker {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
-    // Сетевая синхронизация флага атаки между сервером и клиентом
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -43,20 +42,25 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
                 .add(Attributes.JUMP_STRENGTH, 0.42D)
-                .add(Attributes.FOLLOW_RANGE, 48.0D);
+                .add(Attributes.FOLLOW_RANGE, 32.0D);
     }
 
     @Override
     protected void registerGoals() {
-        // ==========================================
-        // GOAL SELECTOR (Действия моба)
-        // ==========================================
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // 1. Атака (высший приоритет)
-        this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(this, 1.0, true, 9, 2.0));
+        // 1. Атака с ИИ стейт-машиной
+        // Параметры: Моб | Скорость | Игнорировать преграды | Длина анимации |
+        //            Дистанция сближения (1 блок) | Радиус удара (2 блока) | Радиус вытягивания (3 блока)
+        this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(
+                this, 1.2D, true, 14,
+                1.0,
+                2.0,
+                3.0
+        ));
 
-        // 2. Разрушение блоков при застревании (false = без дропа)
+
+        // 2. Разрушение блоков при застревании
         this.goalSelector.addGoal(2, new StuckBlockBreakerGoal(this, false));
 
         // 3. Уничтожение урожая
@@ -66,19 +70,15 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
-        // ==========================================
-        // TARGET SELECTOR (Выбор целей)
-        // ==========================================
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
+        // Цели (кого атаковать)
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true)); // true для mustSee отключено
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // transitionLengthTicks = 2: плавный, но быстрый переход (0.1 сек)
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
-
             if (this.isAttacking()) {
                 return event.setAndContinue(RawAnimation.begin().thenPlay("totebotattack"));
             }
@@ -110,9 +110,6 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         this.entityData.set(ATTACKING, attacking);
     }
 
-    // --- Реализация интерфейса IAnimatedAttacker ---
-    // Именно это позволяет StuckBlockBreakerGoal и RemoveCropGoal включать анимацию!
-
     @Override
     public void setAttackingState(boolean attacking) {
         this.setAttacking(attacking);
@@ -120,13 +117,11 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public boolean isAttackingState() {
-        // Позволяет StuckBlockBreakerGoal узнать, не замахнулся ли моб на игрока
         return this.isAttacking();
     }
 
     @Override
     public int getAttackAnimationLength() {
-        // 0.6875 сек * 20 = 13.75 -> 14 тиков
         return 14;
     }
 

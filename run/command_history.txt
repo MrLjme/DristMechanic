@@ -1,5 +1,3 @@
-/summon dristmechanic:totebot
-/tick rate 9999
 /tick rate 20
 /tick rate 2
 /tick rate 20
@@ -47,4 +45,6 @@
 /tick rate 17
 /tick rate 15
 /tick rate 20
+/summon dristmechanic:totebot
+/effect give Dev minecraft:saturation infinite 250 true
 /summon dristmechanic:totebot

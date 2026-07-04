@@ -22,7 +22,7 @@ public class StuckBlockBreakerGoal extends Goal {
     private final Mob mob;
     private final boolean dropItems;
 
-    private static final double RAYCAST_DISTANCE = 5.0D;
+    private static final double RAYCAST_DISTANCE = 2.0D;
     private static final double SPREAD_XZ = 0.7D;
     private static final double SPREAD_Y_MIN = -0.1D;
     private static final double SPREAD_Y_MAX = 0.7D;
@@ -31,7 +31,7 @@ public class StuckBlockBreakerGoal extends Goal {
     private static final int BREAK_COOLDOWN = 0;
 
     // Точные значения из totebot.animation.json
-    private static final int ATTACK_ANIMATION_LENGTH = 13; // 0.6875 сек * 20
+    private static final int ATTACK_ANIMATION_LENGTH = 14; // 0.6875 сек * 20
     private static final int IMPACT_FRAME = 9;             // 0.4375 сек * 20 = 8.75 → 9
 
     private int animationFrame = -1; // -1 = не анимирует, 0..13 = кадр анимации
@@ -151,12 +151,12 @@ public class StuckBlockBreakerGoal extends Goal {
         );
 
         if (level instanceof ServerLevel serverLevel) {
-            int particleCount = 15;
+            int particleCount = 25;
             float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
             boolean blockBroken = mob.getRandom().nextFloat() * 100.0F < chancePercent;
 
             if (blockBroken) {
-                particleCount = 15;
+                particleCount = 25;
                 level.destroyBlock(pos, dropItems);
                 level.levelEvent(2001, pos, Block.getId(state));
             }
