@@ -49,29 +49,28 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // 1. Атака с ИИ стейт-машиной
-        // Параметры: Моб | Скорость | Игнорировать преграды | Длина анимации |
-        //            Дистанция сближения (1 блок) | Радиус удара (2 блока) | Радиус вытягивания (3 блока)
-        this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(
-                this, 1.2D, true, 14,
-                1.0,
-                2.0,
-                3.0
+        // 1. ЕДИНЫЙ УМНЫЙ GOAL (Атака + Разрушение стен)
+        // Параметры:
+        // - Моб, Скорость (1.2), Игнорировать преграды (true)
+        // - Длина анимации (14 тиков), Кадр удара (9 тик)
+        // - Дистанция сближения (1.0), Радиус удара (2.0), Радиус вытягивания (3.0)
+        // - Дистанция удара по блоку (2.5 блока), Дроп предметов (false)
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(
+                this, 1.2D, true,
+                14, 9,
+                1.0, 2.0, 3.0,
+                2.5, false
         ));
 
+        // 2. Уничтожение урожая (Специфичная задача, оставляем)
+        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 2));
 
-        // 2. Разрушение блоков при застревании
-        this.goalSelector.addGoal(2, new StuckBlockBreakerGoal(this, false));
-
-        // 3. Уничтожение урожая
-        this.goalSelector.addGoal(3, new RemoveCropGoal(this, 0.8, 16, 2));
-
-        // 5. Бродилка
+        // 3. Бродилка
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
-        // Цели (кого атаковать)
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true)); // true для mustSee отключено
+        // Цели (Target Selector)
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
     }
