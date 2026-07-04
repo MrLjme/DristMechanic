@@ -44,7 +44,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 5.0D;
+    private static final double RAYCAST_DISTANCE = 2.0D;
     private static final double SPREAD_XZ = 0.7D;
     private static final double SPREAD_Y_MIN = -0.1D;
     private static final double SPREAD_Y_MAX = 0.7D;
@@ -173,8 +173,8 @@ public class SmartMeleeAttackGoal extends Goal {
             // ВЫЧИСЛЯЕМ ПРОШЕДШИЕ КАДРЫ
             int elapsedFrames = this.attackAnimationLength - this.attackAnimationTicks;
 
-            // УДАР НА ДИНАМИЧЕСКОМ КАДРЕ!
-            if (elapsedFrames == this.attackImpactFrame) {
+            // УДАР НА ДИНАМИЧЕСКОМ КАДРЕ (с защитой от пропуска тика сервером)
+            if (elapsedFrames >= this.attackImpactFrame && this.pendingAction != null) {
                 performPendingAction();
                 this.pendingAction = null;
             }

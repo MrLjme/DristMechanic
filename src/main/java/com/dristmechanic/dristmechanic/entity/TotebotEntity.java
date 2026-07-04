@@ -22,6 +22,7 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttacker {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
+    // Сетевая синхронизация флага атаки между сервером и клиентом
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -49,12 +50,12 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // Добавили 'false' в самом конце!
-        // Параметры: Моб | Скорость | Игнор. преграды | Длина аним. | Сближение | Удар | Вытягивание | Дроп блоков
+        // Единый умный Goal: Атака + Разрушение блоков
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(
-                this, 1.0D, true, 14,
-                1.0, 2.0, 3.0,
-                false // <-- ВОТ ЭТОТ ПАРАМЕТР (false = уничтожать без дропа)
+                this, 1.0D, true,
+                getAttackAnimationLength(), // Берем длину из интерфейса (14)
+                1.5, 2.5, 3.0,
+                true // false = уничтожать блоки без дропа
         ));
 
         // Уничтожение урожая
@@ -65,14 +66,16 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
         // Цели (кого атаковать)
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+        // ВАЖНО: transitionLengthTicks = 2.
+        // Анимируется быстро, чтобы клиент не отставал от серверного удара.
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
+
             if (this.isAttacking()) {
                 return event.setAndContinue(RawAnimation.begin().thenPlay("totebotattack"));
             }
@@ -96,19 +99,28 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         return this.cache;
     }
 
-    @Override
-    public int getAttackImpactFrame() {
-        // 0.4375 сек * 20 = 8.75 → округляем до 9 тика
-        return 9;
-    }
-
     public boolean isAttacking() {
         return this.entityData.get(ATTACKING);
     }
 
+
+
     public void setAttacking(boolean attacking) {
         this.entityData.set(ATTACKING, attacking);
     }
+
+    @Override
+    public void tick() {
+        super.tick();
+        double speed = this.isAggressive() ? 0.31 : 0.29;
+        this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
+    }
+
+
+
+    // ==========================================================
+    // РЕАЛИЗАЦИЯ ИНТЕРФЕЙСА IAnimatedAttacker (КРИТИЧЕСКИ ВАЖНО!)
+    // ==========================================================
 
     @Override
     public void setAttackingState(boolean attacking) {
@@ -122,13 +134,16 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public int getAttackAnimationLength() {
+        // 0.6875 сек * 20 = 13.75 -> 14 тиков
         return 14;
     }
 
     @Override
-    public void tick() {
-        super.tick();
-        double speed = this.isAggressive() ? 0.31 : 0.29;
-        this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
+    public int getAttackImpactFrame() {
+        // В BlockBench пик удара на 0.4375 сек = 8.75 тиков.
+        // Добавляем +2 тика на блендинг анимации и +1 тик на сетевую задержку.
+        // Итого: сервер нанесет урон на 11-м тике, что на экране игрока
+        // идеально совпадет с визуальным пиком замаха.
+        return 12;
     }
 }
