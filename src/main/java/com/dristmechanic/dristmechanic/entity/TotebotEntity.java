@@ -38,7 +38,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 18.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
-                .add(Attributes.ATTACK_DAMAGE, 5.0D)
+                .add(Attributes.ATTACK_DAMAGE, 7.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
                 .add(Attributes.JUMP_STRENGTH, 0.42D)
@@ -49,27 +49,22 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // 1. ЕДИНЫЙ УМНЫЙ GOAL (Атака + Разрушение стен)
-        // Параметры:
-        // - Моб, Скорость (1.2), Игнорировать преграды (true)
-        // - Длина анимации (14 тиков), Кадр удара (9 тик)
-        // - Дистанция сближения (1.0), Радиус удара (2.0), Радиус вытягивания (3.0)
-        // - Дистанция удара по блоку (2.5 блока), Дроп предметов (false)
+        // Добавили 'false' в самом конце!
+        // Параметры: Моб | Скорость | Игнор. преграды | Длина аним. | Сближение | Удар | Вытягивание | Дроп блоков
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(
-                this, 1.2D, true,
-                14, 9,
+                this, 1.0D, true, 14,
                 1.0, 2.0, 3.0,
-                2.5, false
+                false // <-- ВОТ ЭТОТ ПАРАМЕТР (false = уничтожать без дропа)
         ));
 
-        // 2. Уничтожение урожая (Специфичная задача, оставляем)
+        // Уничтожение урожая
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 2));
 
-        // 3. Бродилка
+        // Бродилка
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
-        // Цели (Target Selector)
+        // Цели (кого атаковать)
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.monster.Zombie.class, false));
@@ -101,6 +96,12 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         return this.cache;
     }
 
+    @Override
+    public int getAttackImpactFrame() {
+        // 0.4375 сек * 20 = 8.75 → округляем до 9 тика
+        return 9;
+    }
+
     public boolean isAttacking() {
         return this.entityData.get(ATTACKING);
     }
@@ -127,7 +128,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     @Override
     public void tick() {
         super.tick();
-        double speed = this.isAggressive() ? 0.35 : 0.29;
+        double speed = this.isAggressive() ? 0.31 : 0.29;
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
     }
 }

@@ -12,12 +12,20 @@ import net.minecraft.world.level.block.state.BlockState;
 public class RemoveCropGoal extends RemoveBlockGoal {
     private final int radius;
     private boolean hasDestroyed = false;
-    private int attackAnimationTicks = 0; // Таймер анимации
-    private boolean isAnimating = false;  // Флаг: проигрываем ли анимацию
+    private int animationTicks = 0;
+    private boolean isAnimating = false;
+    private final int attackImpactFrame;
 
     public RemoveCropGoal(PathfinderMob pMob, double pSpeedModifier, int pSearchRange, int radius) {
         super(Blocks.WHEAT, pMob, pSpeedModifier, pSearchRange);
         this.radius = radius;
+
+        // Получаем кадр удара из моба
+        if (pMob instanceof IAnimatedAttacker attacker) {
+            this.attackImpactFrame = attacker.getAttackImpactFrame();
+        } else {
+            this.attackImpactFrame = 9; // Fallback
+        }
     }
 
     @Override
@@ -41,7 +49,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
     public void start() {
         super.start();
         hasDestroyed = false;
-        attackAnimationTicks = 0;
+        animationTicks = 0;
         isAnimating = false;
     }
 
@@ -49,9 +57,8 @@ public class RemoveCropGoal extends RemoveBlockGoal {
     public void stop() {
         super.stop();
         hasDestroyed = false;
-        attackAnimationTicks = 0;
+        animationTicks = 0;
 
-        // Сбрасываем анимацию, если она была включена
         if (isAnimating && this.mob instanceof IAnimatedAttacker attacker) {
             attacker.setAttackingState(false);
             isAnimating = false;
@@ -66,31 +73,35 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         BlockPos target = this.blockPos;
         if (target == null) return;
 
-        // Если моб подошел к цели
         if (this.mob.distanceToSqr(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5) <= 4.0) {
 
-            // Если ещё не начали анимацию - начинаем
             if (!isAnimating) {
                 if (this.mob instanceof IAnimatedAttacker attacker) {
                     attacker.setAttackingState(true);
-                    this.attackAnimationTicks = attacker.getAttackAnimationLength();
+                    this.animationTicks = attacker.getAttackAnimationLength();
                     this.isAnimating = true;
                 } else {
-                    // Если моб не поддерживает анимацию - сразу разрушаем
                     destroyCrops();
                     return;
                 }
             }
 
-            // Отсчитываем таймер анимации
-            if (this.attackAnimationTicks > 0) {
-                this.attackAnimationTicks--;
+            if (this.animationTicks > 0) {
+                this.animationTicks--;
 
-                // Когда анимация закончилась - разрушаем блоки
-                if (this.attackAnimationTicks == 0) {
+                // ВЫЧИСЛЯЕМ ПРОШЕДШИЕ КАДРЫ
+                int animationLength = 0;
+                if (this.mob instanceof IAnimatedAttacker attacker) {
+                    animationLength = attacker.getAttackAnimationLength();
+                }
+                int elapsedFrames = animationLength - this.animationTicks;
+
+                // УДАР НА ДИНАМИЧЕСКОМ КАДРЕ!
+                if (elapsedFrames == this.attackImpactFrame) {
                     destroyCrops();
+                }
 
-                    // Выключаем анимацию
+                if (this.animationTicks == 0) {
                     if (this.mob instanceof IAnimatedAttacker attacker) {
                         attacker.setAttackingState(false);
                         this.isAnimating = false;
@@ -111,7 +122,6 @@ public class RemoveCropGoal extends RemoveBlockGoal {
                         BlockPos pos = center.offset(dx, dy, dz);
                         BlockState state = world.getBlockState(pos);
                         if (state.is(BlockTags.CROPS)) {
-                            // false = БЕЗ ДРОПА (культура уничтожается, а не собирается)
                             world.destroyBlock(pos, false, this.mob);
                         }
                     }
