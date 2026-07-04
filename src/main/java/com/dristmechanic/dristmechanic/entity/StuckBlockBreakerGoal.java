@@ -28,14 +28,13 @@ public class StuckBlockBreakerGoal extends Goal {
     private static final double SPREAD_Y_MAX = 0.7D;
     private static final double SPEED_THRESHOLD = 0.12D;
 
-    private static final int BREAK_COOLDOWN = 10;
+    private static final int BREAK_COOLDOWN = 0;
 
-    // СИНХРОНИЗАЦИЯ КАДРА УДАРА (Hit Frame)
-    // Длина анимации = 14 тиков. Пик удара в BlockBench = 9 тик.
-    // 14 - 9 = 5. Значит, удар нужно наносить, когда до конца анимации осталось 5 тиков.
-    private static final int HIT_FRAME_TICKS_REMAINING = 5;
+    // Точные значения из totebot.animation.json
+    private static final int ATTACK_ANIMATION_LENGTH = 13; // 0.6875 сек * 20
+    private static final int IMPACT_FRAME = 9;             // 0.4375 сек * 20 = 8.75 → 9
 
-    private int animationTicks = 0;
+    private int animationFrame = -1; // -1 = не анимирует, 0..13 = кадр анимации
     private int breakCooldown = 0;
     private BlockPos targetBlock = null;
 
@@ -47,7 +46,7 @@ public class StuckBlockBreakerGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!mob.isAggressive() && mob.getTarget() == null) return false;
-        if (animationTicks > 0 || breakCooldown > 0) return true;
+        if (animationFrame >= 0 || breakCooldown > 0) return true;
 
         double horizontalSpeed = mob.getDeltaMovement().multiply(1.0, 0.0, 1.0).length();
         return horizontalSpeed < SPEED_THRESHOLD;
@@ -60,9 +59,9 @@ public class StuckBlockBreakerGoal extends Goal {
 
     @Override
     public void stop() {
-        if ((animationTicks > 0 || breakCooldown > 0) && mob instanceof IAnimatedAttacker attacker) {
+        if ((animationFrame >= 0 || breakCooldown > 0) && mob instanceof IAnimatedAttacker attacker) {
             attacker.setAttackingState(false);
-            animationTicks = 0;
+            animationFrame = -1;
             breakCooldown = 0;
             targetBlock = null;
         }
@@ -73,40 +72,39 @@ public class StuckBlockBreakerGoal extends Goal {
         Level level = mob.level();
         if (level.isClientSide()) return;
 
-        // 1. ФАЗА КУЛДАУНА
+        // Фаза кулдауна
         if (breakCooldown > 0) {
             breakCooldown--;
             return;
         }
 
-        // 2. ФАЗА АНИМАЦИИ
-        if (animationTicks > 0) {
-            animationTicks--;
+        // Фаза анимации: считаем кадры ВПЕРЁД от 0
+        if (animationFrame >= 0) {
+            animationFrame++;
 
-            // СИНХРОНИЗИРОВАННЫЙ УДАР:
-            // Когда до конца анимации остается ровно 5 тиков (прошло 9 тиков),
-            // мы проигрываем звук, спавним частицы и пытаемся сломать блок.
-            if (animationTicks == HIT_FRAME_TICKS_REMAINING && targetBlock != null) {
+            // УДАР СИНХРОНИЗИРОВАН: ровно на 9-м кадре (пик замаха в BlockBench)
+            if (animationFrame == IMPACT_FRAME && targetBlock != null) {
                 attemptBreakBlock(level, targetBlock);
-                targetBlock = null; // Сбрасываем, чтобы не ударить дважды за один замах
+                targetBlock = null;
             }
 
-            // Конец анимации (14 тиков прошли)
-            if (animationTicks == 0) {
+            // Конец анимации
+            if (animationFrame >= ATTACK_ANIMATION_LENGTH) {
                 if (mob instanceof IAnimatedAttacker attacker) {
                     attacker.setAttackingState(false);
                 }
+                animationFrame = -1;
                 breakCooldown = BREAK_COOLDOWN;
             }
             return;
         }
 
-        // 3. Защита от конфликта с атакой игрока
+        // Защита: не атакуем блоки, если моб уже бьёт игрока
         if (mob instanceof IAnimatedAttacker attacker && attacker.isAttackingState()) {
             return;
         }
 
-        // 4. ФАЗА ПРИЦЕЛИВАНИЯ
+        // Рейкаст для поиска блока
         Vec3 eyePos = mob.getEyePosition(1.0F);
         Vec3 lookVec = mob.getViewVector(1.0F);
 
@@ -126,7 +124,7 @@ public class StuckBlockBreakerGoal extends Goal {
             if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, blockPos) >= 0.0F) {
                 if (mob instanceof IAnimatedAttacker attacker) {
                     attacker.setAttackingState(true);
-                    this.animationTicks = attacker.getAttackAnimationLength();
+                    this.animationFrame = 0; // Начинаем отсчёт с 0
                     this.targetBlock = blockPos;
                 } else {
                     attemptBreakBlock(level, blockPos);
@@ -143,23 +141,17 @@ public class StuckBlockBreakerGoal extends Goal {
         float hardness = state.getDestroySpeed(level, pos);
         if (hardness < 0.0F) return;
 
-        // Звук удара по материалу блока
         SoundType soundType = state.getSoundType();
         SoundEvent hitSound = soundType.getHitSound();
 
         level.playSound(
-                null,
-                pos,
-                hitSound,
-                SoundSource.BLOCKS,
+                null, pos, hitSound, SoundSource.BLOCKS,
                 soundType.getVolume() * 0.5F,
                 soundType.getPitch() * 0.875F
         );
 
-        // Частицы и разрушение
         if (level instanceof ServerLevel serverLevel) {
-            int particleCount = 5;
-
+            int particleCount = 15;
             float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
             boolean blockBroken = mob.getRandom().nextFloat() * 100.0F < chancePercent;
 
@@ -175,11 +167,8 @@ public class StuckBlockBreakerGoal extends Goal {
             double centerZ = pos.getZ() + 0.5D;
 
             serverLevel.sendParticles(
-                    particleOption,
-                    centerX, centerY, centerZ,
-                    particleCount,
-                    0.3D, 0.3D, 0.3D,
-                    0.1D
+                    particleOption, centerX, centerY, centerZ,
+                    particleCount, 0.3D, 0.3D, 0.3D, 0.1D
             );
         } else {
             float chancePercent = 100.0F / (1.0F + hardness * 2.5F);

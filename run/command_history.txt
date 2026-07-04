@@ -1,38 +1,6 @@
 /summon dristmechanic:totebot
 /tick rate 9999
 /tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/gamerule doDaylightCycle false
-/tick rate 9
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 9
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
-/summon dristmechanic:totebot
-/tick rate 9999
-/tick rate 20
 /tick rate 2
 /tick rate 20
 /tick rate 2
@@ -47,4 +15,36 @@
 /summon dristmechanic:totebot
 /fill ~ ~ ~ ~50 ~ ~50 minecraft:farmland
 /fill ~ ~ ~ ~50 ~ ~50 minecraft:potatoes
+/summon dristmechanic:totebot
+/tick rate 9999
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 5
+/summon dristmechanic:totebot
+/tick rate 2
+/summon dristmechanic:totebot
+/tick rate 2
+/tick rate 200
+/tick rate 2000
+/tick rate 9
+/tick rate 20
+/tick rate 2000
+/tick rate 20
+/summon dristmechanic:totebot
+/tick rate 2000
+/tick rate 20
+/tick rate 2000
+/tick rate 20
+/tick rate 2000
+/tick rate 9999
+/tick rate 20
+/tick rate 2
+/tick rate 20
+/tick rate 2
+/tick rate 5
+/tick rate 1
+/tick rate 19
+/tick rate 17
+/tick rate 15
+/tick rate 20
 /summon dristmechanic:totebot

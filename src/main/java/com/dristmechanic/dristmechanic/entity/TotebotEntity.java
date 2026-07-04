@@ -22,6 +22,7 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttacker {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
+    // Сетевая синхронизация флага атаки между сервером и клиентом
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -48,11 +49,11 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     @Override
     protected void registerGoals() {
         // ==========================================
-        // GOAL SELECTOR (Действия и движение моба)
+        // GOAL SELECTOR (Действия моба)
         // ==========================================
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // 1. Атака (высший приоритет среди действий)
+        // 1. Атака (высший приоритет)
         this.goalSelector.addGoal(1, new DelayedMeleeAttackGoal(this, 1.0, true, 9, 2.0));
 
         // 2. Разрушение блоков при застревании (false = без дропа)
@@ -61,12 +62,12 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         // 3. Уничтожение урожая
         this.goalSelector.addGoal(3, new RemoveCropGoal(this, 0.8, 16, 2));
 
-        // 5. Бродилка (низший приоритет)
+        // 5. Бродилка
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
         // ==========================================
-        // TARGET SELECTOR (Выбор целей для атаки)
+        // TARGET SELECTOR (Выбор целей)
         // ==========================================
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
@@ -75,15 +76,13 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // transitionLengthTicks увеличен до 5 для плавного смешивания (blend) анимаций
+        // transitionLengthTicks = 2: плавный, но быстрый переход (0.1 сек)
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
 
-            // 1. Приоритет атаки.
             if (this.isAttacking()) {
-                return event.setAndContinue(RawAnimation.begin().thenPlayAndHold("totebotattack"));
+                return event.setAndContinue(RawAnimation.begin().thenPlay("totebotattack"));
             }
 
-            // 2. Надежная проверка движения.
             boolean isMoving = event.isMoving() || this.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4D;
 
             if (isMoving) {
@@ -94,7 +93,6 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
                 }
             }
 
-            // 3. Состояние покоя
             return event.setAndContinue(RawAnimation.begin().thenLoop("totebotidle"));
         }));
     }
@@ -113,6 +111,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     }
 
     // --- Реализация интерфейса IAnimatedAttacker ---
+    // Именно это позволяет StuckBlockBreakerGoal и RemoveCropGoal включать анимацию!
 
     @Override
     public void setAttackingState(boolean attacking) {
@@ -134,7 +133,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
     @Override
     public void tick() {
         super.tick();
-        double speed = this.isAggressive() ? 0.37 : 0.32;
+        double speed = this.isAggressive() ? 0.35 : 0.29;
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
     }
 }

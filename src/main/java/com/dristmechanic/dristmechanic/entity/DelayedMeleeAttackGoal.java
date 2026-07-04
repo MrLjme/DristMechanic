@@ -91,7 +91,7 @@ public class DelayedMeleeAttackGoal extends Goal {
 
         if (isWithinReach && this.attackCooldown <= 0) {
             this.attackDelay = this.attackDelayTicks;
-            this.attackCooldown = 14;
+            this.attackCooldown = 13;
 
             // Запуск анимации через универсальный интерфейс
             if (this.mob instanceof IAnimatedAttacker attacker) {
