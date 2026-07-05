@@ -40,15 +40,15 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackInterval;
     private int attackAnimationTicks = 0;
 
-    // Динамический кадр удара - берется из моба!
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 2.0D;
-    private static final double SPREAD_XZ = 0.7D;
-    private static final double SPREAD_Y_MIN = -0.1D;
-    private static final double SPREAD_Y_MAX = 0.7D;
-    private static final double SPEED_THRESHOLD = 0.12D;
+    private static final double RAYCAST_DISTANCE = 5.0D;
+    private static final double CONE_THRESHOLD = 0.6D; // ~53 градуса обзора
+
+    private int stuckTicks = 0;
+    private Vec3 lastPos = null;
+    private static final int STUCK_THRESHOLD = 20; // 1 секунда без движения
 
     private PendingAction pendingAction = null;
     private BlockPos pendingBlockPos = null;
@@ -72,11 +72,9 @@ public class SmartMeleeAttackGoal extends Goal {
         this.attackAnimationLength = animationTicks;
         this.attackInterval = animationTicks + 5;
 
-        // Получаем кадр удара из моба (если он реализует интерфейс)
         if (mob instanceof IAnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
         } else {
-            // Fallback: удар в середине анимации
             this.attackImpactFrame = animationTicks / 2;
         }
 
@@ -89,13 +87,10 @@ public class SmartMeleeAttackGoal extends Goal {
         if (target != null && target.isAlive()) {
             return true;
         }
-
         if (attackAnimationTicks > 0 || !isCooldownFinished()) {
             return true;
         }
-
-        double horizontalSpeed = mob.getDeltaMovement().multiply(1.0, 0.0, 1.0).length();
-        return horizontalSpeed < SPEED_THRESHOLD;
+        return false;
     }
 
     @Override
@@ -115,6 +110,8 @@ public class SmartMeleeAttackGoal extends Goal {
         this.hasUsedExtendedAttack = false;
         this.attackAnimationTicks = 0;
         this.pendingAction = null;
+        this.stuckTicks = 0;
+        this.lastPos = null;
     }
 
     @Override
@@ -127,6 +124,8 @@ public class SmartMeleeAttackGoal extends Goal {
             this.attackAnimationTicks = 0;
         }
         this.pendingAction = null;
+        this.stuckTicks = 0;
+        this.lastPos = null;
     }
 
     @Override
@@ -141,7 +140,43 @@ public class SmartMeleeAttackGoal extends Goal {
 
     @Override
     public void tick() {
+        if (this.attackAnimationTicks > 0) {
+            if (this.pendingAction == PendingAction.BREAK_BLOCK && this.pendingBlockPos != null) {
+                this.mob.getLookControl().setLookAt(this.pendingBlockPos.getX() + 0.5, this.pendingBlockPos.getY() + 0.5, this.pendingBlockPos.getZ() + 0.5, 30.0F, 30.0F);
+            } else if (this.pendingAction == PendingAction.ATTACK_TARGET && this.pendingTarget != null && this.pendingTarget.isAlive()) {
+                this.mob.getLookControl().setLookAt(this.pendingTarget, 30.0F, 30.0F);
+            } else {
+                LivingEntity t = this.mob.getTarget();
+                if (t != null && t.isAlive()) {
+                    this.mob.getLookControl().setLookAt(t, 30.0F, 30.0F);
+                }
+            }
+
+            this.attackAnimationTicks--;
+            int elapsedFrames = this.attackAnimationLength - this.attackAnimationTicks;
+
+            if (elapsedFrames == this.attackImpactFrame) {
+                performPendingAction();
+                this.pendingAction = null;
+            }
+
+            if (this.attackAnimationTicks == 0 && this.mob instanceof IAnimatedAttacker attacker) {
+                attacker.setAttackingState(false);
+            }
+            return;
+        }
+
         LivingEntity target = this.mob.getTarget();
+
+        if (this.lastPos != null) {
+            double moveDistSq = this.mob.position().distanceToSqr(this.lastPos);
+            if (moveDistSq > 0.01D) {
+                this.stuckTicks = 0;
+            } else {
+                this.stuckTicks++;
+            }
+        }
+        this.lastPos = this.mob.position();
 
         if (target != null && target.isAlive()) {
             this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
@@ -167,24 +202,6 @@ public class SmartMeleeAttackGoal extends Goal {
             }
         }
 
-        if (this.attackAnimationTicks > 0) {
-            this.attackAnimationTicks--;
-
-            // ВЫЧИСЛЯЕМ ПРОШЕДШИЕ КАДРЫ
-            int elapsedFrames = this.attackAnimationLength - this.attackAnimationTicks;
-
-            // УДАР НА ДИНАМИЧЕСКОМ КАДРЕ (с защитой от пропуска тика сервером)
-            if (elapsedFrames >= this.attackImpactFrame && this.pendingAction != null) {
-                performPendingAction();
-                this.pendingAction = null;
-            }
-
-            if (this.attackAnimationTicks == 0 && this.mob instanceof IAnimatedAttacker attacker) {
-                attacker.setAttackingState(false);
-            }
-            return;
-        }
-
         if (!isCooldownFinished()) {
             return;
         }
@@ -196,49 +213,109 @@ public class SmartMeleeAttackGoal extends Goal {
         Level level = this.mob.level();
         if (level.isClientSide()) return;
 
-        Vec3 eyePos = this.mob.getEyePosition(1.0F);
-        Vec3 aimVec;
-
-        if (target != null && target.isAlive()) {
-            Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2.0, 0);
-            aimVec = targetPos.subtract(eyePos).normalize();
-        } else {
-            Vec3 lookVec = this.mob.getViewVector(1.0F);
-            RandomSource rand = this.mob.getRandom();
-            aimVec = new Vec3(
-                    lookVec.x + Mth.nextDouble(rand, -SPREAD_XZ, SPREAD_XZ),
-                    lookVec.y + Mth.nextDouble(rand, SPREAD_Y_MIN, SPREAD_Y_MAX),
-                    lookVec.z + Mth.nextDouble(rand, -SPREAD_XZ, SPREAD_XZ)
-            ).normalize();
+        if (target == null || !target.isAlive()) {
+            return;
         }
 
-        Vec3 rayEnd = eyePos.add(aimVec.scale(RAYCAST_DISTANCE));
-        ClipContext clipContext = new ClipContext(eyePos, rayEnd, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
-        BlockHitResult hitResult = level.clip(clipContext);
+        double distSqr = this.mob.distanceToSqr(target);
 
-        boolean hitBlock = false;
-        BlockPos hitBlockPos = null;
+        if (canHitTarget(distSqr)) {
+            this.pendingAction = PendingAction.ATTACK_TARGET;
+            this.pendingTarget = target;
+            this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
+            startAnimation();
+            return;
+        }
 
-        if (hitResult.getType() == HitResult.Type.BLOCK) {
-            BlockState state = level.getBlockState(hitResult.getBlockPos());
-            if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, hitResult.getBlockPos()) >= 0.0F) {
-                double distToBlockSq = eyePos.distanceToSqr(hitResult.getLocation());
-                if (target == null || distToBlockSq <= this.mob.distanceToSqr(target)) {
-                    hitBlock = true;
-                    hitBlockPos = hitResult.getBlockPos();
+        boolean isStuck = (this.stuckTicks >= STUCK_THRESHOLD);
+
+        if (isStuck) {
+            Vec3 eyePos = this.mob.getEyePosition(1.0F);
+            Vec3 targetCenter = target.position().add(0, target.getBbHeight() / 2.0, 0);
+
+            double dy = targetCenter.y - eyePos.y;
+            double horizontalDistSq = Math.pow(targetCenter.x - eyePos.x, 2) + Math.pow(targetCenter.z - eyePos.z, 2);
+
+            Vec3 aimVec;
+
+            // --- УМНАЯ МЕХАНИКА ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ ---
+            if (dy > 1.5D && horizontalDistSq > 1.0D) {
+                // Цель ВЫСОКО. Включаем режим "Зигзагообразной Лестницы" (Zigzag Stairs)
+                // Чтобы моб не вырыл узкий туннель 1x1 (в котором он застрянет),
+                // мы заставляем его смещать точку копания влево и вправо каждые 1.5 секунды.
+                // Это создаст широкую винтовую шахту с нормальными ступенями.
+                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
+
+                int zigzagPhase = (int)(this.mob.level().getGameTime() / 30L) % 2;
+                double sideOffset = (zigzagPhase == 0) ? 1.2D : -1.2D;
+
+                // Вектор перпендикулярный направлению движения (направление "влево-вправо")
+                Vec3 sideVec = new Vec3(-horizontalVec.z, 0.0D, horizontalVec.x);
+
+                aimVec = new Vec3(
+                        horizontalVec.x + sideVec.x * sideOffset,
+                        1.0D, // Вверх
+                        horizontalVec.z + sideVec.z * sideOffset
+                ).normalize();
+            } else if (dy < -1.5D && horizontalDistSq > 1.0D) {
+                // Цель ГЛУБОКО ВНИЗУ. Делаем безопасный пандус.
+                // Моб не будет ломать блок прямо под собой, а сделает пологий спуск (2 вперед, 1 вниз).
+                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
+                aimVec = new Vec3(horizontalVec.x * 2.0D, -1.0D, horizontalVec.z * 2.0D).normalize();
+            } else {
+                // Цель примерно на одном уровне. Копаем прямо.
+                aimVec = targetCenter.subtract(eyePos).normalize();
+            }
+            // ------------------------------------------------
+
+            int range = (int) Math.ceil(RAYCAST_DISTANCE);
+            BlockPos mobPos = this.mob.blockPosition();
+            BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+
+            double nearestDistSq = Double.MAX_VALUE;
+            BlockPos nearestBlockPos = null;
+            double maxDistSq = RAYCAST_DISTANCE * RAYCAST_DISTANCE;
+
+            for (int x = -range; x <= range; x++) {
+                for (int y = -range; y <= range; y++) {
+                    for (int z = -range; z <= range; z++) {
+                        mutablePos.set(mobPos.getX() + x, mobPos.getY() + y, mobPos.getZ() + z);
+                        Vec3 blockCenter = Vec3.atCenterOf(mutablePos);
+
+                        double dx = blockCenter.x - eyePos.x;
+                        double dyB = blockCenter.y - eyePos.y;
+                        double dz = blockCenter.z - eyePos.z;
+                        double blockDistSq = dx * dx + dyB * dyB + dz * dz;
+
+                        if (blockDistSq > maxDistSq || blockDistSq < 0.25D) continue;
+
+                        double dot = dx * aimVec.x + dyB * aimVec.y + dz * aimVec.z;
+                        double cosAngle = dot / Math.sqrt(blockDistSq);
+                        if (cosAngle < CONE_THRESHOLD) continue;
+
+                        ClipContext clipContext = new ClipContext(eyePos, blockCenter, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
+                        BlockHitResult hitResult = level.clip(clipContext);
+
+                        if (hitResult.getType() == HitResult.Type.BLOCK && hitResult.getBlockPos().equals(mutablePos)) {
+                            BlockState state = level.getBlockState(mutablePos);
+                            if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, mutablePos) >= 0.0F) {
+                                if (blockDistSq < nearestDistSq) {
+                                    nearestDistSq = blockDistSq;
+                                    nearestBlockPos = mutablePos.immutable();
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
 
-        if (hitBlock) {
-            this.pendingAction = PendingAction.BREAK_BLOCK;
-            this.pendingBlockPos = hitBlockPos;
-            startAnimation();
-        } else if (target != null && target.isAlive()) {
-            double distSqr = this.mob.distanceToSqr(target);
-            if (canHitTarget(distSqr)) {
-                this.pendingAction = PendingAction.ATTACK_TARGET;
-                this.pendingTarget = target;
+            if (nearestBlockPos != null) {
+                this.pendingAction = PendingAction.BREAK_BLOCK;
+                this.pendingBlockPos = nearestBlockPos;
+
+                this.mob.getLookControl().setLookAt(nearestBlockPos.getX() + 0.5, nearestBlockPos.getY() + 0.5, nearestBlockPos.getZ() + 0.5, 30.0F, 30.0F);
+
+                this.stuckTicks = 0;
                 startAnimation();
             }
         }

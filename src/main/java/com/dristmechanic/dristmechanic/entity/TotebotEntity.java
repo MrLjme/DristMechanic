@@ -54,7 +54,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(
                 this, 1.0D, true,
                 getAttackAnimationLength(), // Берем длину из интерфейса (14)
-                1.5, 2.5, 3.0,
+                1.5, 1.9, 2.3,
                 true // false = уничтожать блоки без дропа
         ));
 
