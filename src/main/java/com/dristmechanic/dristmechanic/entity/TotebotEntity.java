@@ -140,10 +140,6 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public int getAttackImpactFrame() {
-        // В BlockBench пик удара на 0.4375 сек = 8.75 тиков.
-        // Добавляем +2 тика на блендинг анимации и +1 тик на сетевую задержку.
-        // Итого: сервер нанесет урон на 11-м тике, что на экране игрока
-        // идеально совпадет с визуальным пиком замаха.
-        return 12;
+        return 13;
     }
 }
