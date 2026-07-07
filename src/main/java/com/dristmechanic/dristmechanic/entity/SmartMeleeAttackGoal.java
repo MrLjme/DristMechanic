@@ -6,8 +6,6 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -43,7 +41,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 5.0D;
+    private static final double RAYCAST_DISTANCE = 3.0D;
     private static final double CONE_THRESHOLD = 0.6D; // ~53 градуса обзора
 
     private int stuckTicks = 0;
@@ -233,40 +231,29 @@ public class SmartMeleeAttackGoal extends Goal {
             Vec3 eyePos = this.mob.getEyePosition(1.0F);
             Vec3 targetCenter = target.position().add(0, target.getBbHeight() / 2.0, 0);
 
+            double dxH = targetCenter.x - eyePos.x;
             double dy = targetCenter.y - eyePos.y;
-            double horizontalDistSq = Math.pow(targetCenter.x - eyePos.x, 2) + Math.pow(targetCenter.z - eyePos.z, 2);
+            double dzH = targetCenter.z - eyePos.z;
+            double horizontalDistSq = dxH * dxH + dzH * dzH;
 
             Vec3 aimVec;
 
-            // --- УМНАЯ МЕХАНИКА ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ ---
-            if (dy > 1.5D && horizontalDistSq > 1.0D) {
-                // Цель ВЫСОКО. Включаем режим "Зигзагообразной Лестницы" (Zigzag Stairs)
-                // Чтобы моб не вырыл узкий туннель 1x1 (в котором он застрянет),
-                // мы заставляем его смещать точку копания влево и вправо каждые 1.5 секунды.
-                // Это создаст широкую винтовую шахту с нормальными ступенями.
-                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
-
-                int zigzagPhase = (int)(this.mob.level().getGameTime() / 30L) % 2;
-                double sideOffset = (zigzagPhase == 0) ? 1.2D : -1.2D;
-
-                // Вектор перпендикулярный направлению движения (направление "влево-вправо")
-                Vec3 sideVec = new Vec3(-horizontalVec.z, 0.0D, horizontalVec.x);
-
-                aimVec = new Vec3(
-                        horizontalVec.x + sideVec.x * sideOffset,
-                        1.0D, // Вверх
-                        horizontalVec.z + sideVec.z * sideOffset
-                ).normalize();
-            } else if (dy < -1.5D && horizontalDistSq > 1.0D) {
-                // Цель ГЛУБОКО ВНИЗУ. Делаем безопасный пандус.
-                // Моб не будет ломать блок прямо под собой, а сделает пологий спуск (2 вперед, 1 вниз).
-                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
-                aimVec = new Vec3(horizontalVec.x * 2.0D, -1.0D, horizontalVec.z * 2.0D).normalize();
+            if (horizontalDistSq < 0.01D) {
+                // Защита от NaN: цель ровно над или под мобом
+                aimVec = new Vec3(0.0D, dy > 0 ? 1.0D : -1.0D, 0.0D);
+            } else if (dy > 1.5D) {
+                // Цель ВЫСОКО. Делаем "лестницу" (копает вверх и вперед).
+                Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                aimVec = new Vec3(horizontalVec.x, 1.0D, horizontalVec.z).normalize();
+            } else if (dy < -1.5D) {
+                // Цель ВНИЗУ. Делаем "спуск" (копает вниз и вперед).
+                Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                aimVec = new Vec3(horizontalVec.x, -1.0D, horizontalVec.z).normalize();
             } else {
-                // Цель примерно на одном уровне. Копаем прямо.
-                aimVec = targetCenter.subtract(eyePos).normalize();
+                // Цель на одном уровне. Делаем горизонтальный "туннель".
+                // Обнуляем Y, чтобы моб смотрел строго горизонтально и не ломал пол/потолок.
+                aimVec = new Vec3(dxH, 0.0D, dzH).normalize();
             }
-            // ------------------------------------------------
 
             int range = (int) Math.ceil(RAYCAST_DISTANCE);
             BlockPos mobPos = this.mob.blockPosition();

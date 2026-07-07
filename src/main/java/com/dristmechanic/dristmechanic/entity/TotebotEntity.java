@@ -22,7 +22,6 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttacker {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
-    // Сетевая синхронизация флага атаки между сервером и клиентом
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -72,8 +71,7 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // ВАЖНО: transitionLengthTicks = 2.
-        // Анимируется быстро, чтобы клиент не отставал от серверного удара.
+
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
 
             if (this.isAttacking()) {
@@ -116,12 +114,6 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
     }
 
-
-
-    // ==========================================================
-    // РЕАЛИЗАЦИЯ ИНТЕРФЕЙСА IAnimatedAttacker (КРИТИЧЕСКИ ВАЖНО!)
-    // ==========================================================
-
     @Override
     public void setAttackingState(boolean attacking) {
         this.setAttacking(attacking);
@@ -134,7 +126,6 @@ public class TotebotEntity extends Monster implements GeoEntity, IAnimatedAttack
 
     @Override
     public int getAttackAnimationLength() {
-        // 0.6875 сек * 20 = 13.75 -> 14 тиков
         return 14;
     }
 
