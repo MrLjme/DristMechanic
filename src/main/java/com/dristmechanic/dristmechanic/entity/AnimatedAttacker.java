@@ -1,6 +1,6 @@
 package com.dristmechanic.dristmechanic.entity;
 
-public interface IAnimatedAttacker {
+public interface AnimatedAttacker {
     void setAttackingState(boolean attacking);
     boolean isAttackingState();
     int getAttackAnimationLength();

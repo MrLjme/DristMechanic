@@ -21,7 +21,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         this.radius = radius;
 
         // Получаем кадр удара из моба
-        if (pMob instanceof IAnimatedAttacker attacker) {
+        if (pMob instanceof AnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
         } else {
             this.attackImpactFrame = 9; // Fallback
@@ -59,7 +59,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         hasDestroyed = false;
         animationTicks = 0;
 
-        if (isAnimating && this.mob instanceof IAnimatedAttacker attacker) {
+        if (isAnimating && this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(false);
             isAnimating = false;
         }
@@ -76,7 +76,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         if (this.mob.distanceToSqr(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5) <= 4.0) {
 
             if (!isAnimating) {
-                if (this.mob instanceof IAnimatedAttacker attacker) {
+                if (this.mob instanceof AnimatedAttacker attacker) {
                     attacker.setAttackingState(true);
                     this.animationTicks = attacker.getAttackAnimationLength();
                     this.isAnimating = true;
@@ -91,7 +91,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
 
                 // ВЫЧИСЛЯЕМ ПРОШЕДШИЕ КАДРЫ
                 int animationLength = 0;
-                if (this.mob instanceof IAnimatedAttacker attacker) {
+                if (this.mob instanceof AnimatedAttacker attacker) {
                     animationLength = attacker.getAttackAnimationLength();
                 }
                 int elapsedFrames = animationLength - this.animationTicks;
@@ -102,7 +102,7 @@ public class RemoveCropGoal extends RemoveBlockGoal {
                 }
 
                 if (this.animationTicks == 0) {
-                    if (this.mob instanceof IAnimatedAttacker attacker) {
+                    if (this.mob instanceof AnimatedAttacker attacker) {
                         attacker.setAttackingState(false);
                         this.isAnimating = false;
                     }

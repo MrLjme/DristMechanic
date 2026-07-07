@@ -41,7 +41,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 3.0D;
+    private static final double RAYCAST_DISTANCE = 5.0D;
     private static final double CONE_THRESHOLD = 0.6D; // ~53 градуса обзора
 
     private int stuckTicks = 0;
@@ -70,7 +70,7 @@ public class SmartMeleeAttackGoal extends Goal {
         this.attackAnimationLength = animationTicks;
         this.attackInterval = animationTicks + 5;
 
-        if (mob instanceof IAnimatedAttacker attacker) {
+        if (mob instanceof AnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
         } else {
             this.attackImpactFrame = animationTicks / 2;
@@ -85,10 +85,7 @@ public class SmartMeleeAttackGoal extends Goal {
         if (target != null && target.isAlive()) {
             return true;
         }
-        if (attackAnimationTicks > 0 || !isCooldownFinished()) {
-            return true;
-        }
-        return false;
+        return attackAnimationTicks > 0; // Ждем только если анимация не закончилась
     }
 
     @Override
@@ -117,7 +114,7 @@ public class SmartMeleeAttackGoal extends Goal {
         this.mob.setAggressive(false);
         this.mob.getNavigation().stop();
 
-        if (this.attackAnimationTicks > 0 && this.mob instanceof IAnimatedAttacker attacker) {
+        if (this.attackAnimationTicks > 0 && this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(false);
             this.attackAnimationTicks = 0;
         }
@@ -158,7 +155,7 @@ public class SmartMeleeAttackGoal extends Goal {
                 this.pendingAction = null;
             }
 
-            if (this.attackAnimationTicks == 0 && this.mob instanceof IAnimatedAttacker attacker) {
+            if (this.attackAnimationTicks == 0 && this.mob instanceof AnimatedAttacker attacker) {
                 attacker.setAttackingState(false);
             }
             return;
@@ -231,29 +228,35 @@ public class SmartMeleeAttackGoal extends Goal {
             Vec3 eyePos = this.mob.getEyePosition(1.0F);
             Vec3 targetCenter = target.position().add(0, target.getBbHeight() / 2.0, 0);
 
-            double dxH = targetCenter.x - eyePos.x;
             double dy = targetCenter.y - eyePos.y;
-            double dzH = targetCenter.z - eyePos.z;
-            double horizontalDistSq = dxH * dxH + dzH * dzH;
+            double horizontalDistSq = Math.pow(targetCenter.x - eyePos.x, 2) + Math.pow(targetCenter.z - eyePos.z, 2);
 
             Vec3 aimVec;
 
-            if (horizontalDistSq < 0.01D) {
-                // Защита от NaN: цель ровно над или под мобом
-                aimVec = new Vec3(0.0D, dy > 0 ? 1.0D : -1.0D, 0.0D);
-            } else if (dy > 1.5D) {
-                // Цель ВЫСОКО. Делаем "лестницу" (копает вверх и вперед).
-                Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
-                aimVec = new Vec3(horizontalVec.x, 1.0D, horizontalVec.z).normalize();
-            } else if (dy < -1.5D) {
-                // Цель ВНИЗУ. Делаем "спуск" (копает вниз и вперед).
-                Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
-                aimVec = new Vec3(horizontalVec.x, -1.0D, horizontalVec.z).normalize();
+            // --- УМНАЯ МЕХАНИКА ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ ---
+            if (dy > 1.5D && horizontalDistSq > 1.0D) {
+                // Цель ВЫСОКО. Включаем режим "Зигзагообразной Лестницы" (Zigzag Stairs)
+                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
+
+                int zigzagPhase = (int)(this.mob.level().getGameTime() / 30L) % 2;
+                double sideOffset = (zigzagPhase == 0) ? 1.2D : -1.2D;
+
+                Vec3 sideVec = new Vec3(-horizontalVec.z, 0.0D, horizontalVec.x);
+
+                aimVec = new Vec3(
+                        horizontalVec.x + sideVec.x * sideOffset,
+                        1.0D, // Вверх
+                        horizontalVec.z + sideVec.z * sideOffset
+                ).normalize();
+            } else if (dy < -1.5D && horizontalDistSq > 1.0D) {
+                // Цель ГЛУБОКО ВНИЗУ. Делаем безопасный пандус.
+                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
+                aimVec = new Vec3(horizontalVec.x * 2.0D, -1.0D, horizontalVec.z * 2.0D).normalize();
             } else {
-                // Цель на одном уровне. Делаем горизонтальный "туннель".
-                // Обнуляем Y, чтобы моб смотрел строго горизонтально и не ломал пол/потолок.
-                aimVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                // Цель примерно на одном уровне. Копаем прямо.
+                aimVec = targetCenter.subtract(eyePos).normalize();
             }
+            // ------------------------------------------------
 
             int range = (int) Math.ceil(RAYCAST_DISTANCE);
             BlockPos mobPos = this.mob.blockPosition();
@@ -280,7 +283,8 @@ public class SmartMeleeAttackGoal extends Goal {
                         double cosAngle = dot / Math.sqrt(blockDistSq);
                         if (cosAngle < CONE_THRESHOLD) continue;
 
-                        ClipContext clipContext = new ClipContext(eyePos, blockCenter, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
+                        // ИСПРАВЛЕНО: Заменено OUTLINE на COLLIDER для физических хитбоксов
+                        ClipContext clipContext = new ClipContext(eyePos, blockCenter, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob);
                         BlockHitResult hitResult = level.clip(clipContext);
 
                         if (hitResult.getType() == HitResult.Type.BLOCK && hitResult.getBlockPos().equals(mutablePos)) {
@@ -321,7 +325,7 @@ public class SmartMeleeAttackGoal extends Goal {
     }
 
     private void startAnimation() {
-        if (this.mob instanceof IAnimatedAttacker attacker) {
+        if (this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(true);
             this.attackAnimationTicks = this.attackAnimationLength;
             this.lastCanUseTime = this.mob.level().getGameTime();
@@ -353,32 +357,26 @@ public class SmartMeleeAttackGoal extends Goal {
         SoundType soundType = state.getSoundType();
         SoundEvent hitSound = soundType.getHitSound();
 
-        level.playSound(null, pos, hitSound, SoundSource.BLOCKS,
-                soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
-
+        // ИСПРАВЛЕНО: Убран мертвый код (else блок) и дублирование частиц
         if (level instanceof ServerLevel serverLevel) {
-            int particleCount = 25;
             float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
             boolean blockBroken = this.mob.getRandom().nextFloat() * 100.0F < chancePercent;
 
             if (blockBroken) {
-                particleCount = 25;
                 level.destroyBlock(pos, dropBlockItems);
-                level.levelEvent(2001, pos, Block.getId(state));
-            }
+                level.levelEvent(2001, pos, Block.getId(state)); // Уже спавнит частицы и играет звук
+            } else {
+                // Если блок НЕ разрушен, спавним частицы удара и играем звук
+                BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
+                double centerX = pos.getX() + 0.5D;
+                double centerY = pos.getY() + 0.5D;
+                double centerZ = pos.getZ() + 0.5D;
 
-            BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
-            double centerX = pos.getX() + 0.5D;
-            double centerY = pos.getY() + 0.5D;
-            double centerZ = pos.getZ() + 0.5D;
+                serverLevel.sendParticles(particleOption, centerX, centerY, centerZ,
+                        10, 0.3D, 0.3D, 0.3D, 0.1D);
 
-            serverLevel.sendParticles(particleOption, centerX, centerY, centerZ,
-                    particleCount, 0.3D, 0.3D, 0.3D, 0.1D);
-        } else {
-            float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
-            if (this.mob.getRandom().nextFloat() * 100.0F < chancePercent) {
-                level.destroyBlock(pos, dropBlockItems);
-                level.levelEvent(2001, pos, Block.getId(state));
+                level.playSound(null, pos, hitSound, SoundSource.BLOCKS,
+                        soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
             }
         }
     }
