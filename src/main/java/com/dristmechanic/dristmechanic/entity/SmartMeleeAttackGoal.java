@@ -41,16 +41,17 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 5.0D;
-    private static final double CONE_THRESHOLD = 0.6D; // ~53 градуса обзора
+    private static final double RAYCAST_DISTANCE = 3.0D;
 
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
-    private static final int STUCK_THRESHOLD = 20; // 1 секунда без движения
+    private static final int STUCK_THRESHOLD = 15;
 
     private PendingAction pendingAction = null;
     private BlockPos pendingBlockPos = null;
     private LivingEntity pendingTarget = null;
+
+    private boolean nextBreakFromHead = true;
 
     private enum PendingAction {
         BREAK_BLOCK, ATTACK_TARGET
@@ -85,7 +86,10 @@ public class SmartMeleeAttackGoal extends Goal {
         if (target != null && target.isAlive()) {
             return true;
         }
-        return attackAnimationTicks > 0; // Ждем только если анимация не закончилась
+        if (attackAnimationTicks > 0 || !isCooldownFinished()) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -225,93 +229,61 @@ public class SmartMeleeAttackGoal extends Goal {
         boolean isStuck = (this.stuckTicks >= STUCK_THRESHOLD);
 
         if (isStuck) {
-            Vec3 eyePos = this.mob.getEyePosition(1.0F);
+            boolean fromHead = this.nextBreakFromHead;
+            this.nextBreakFromHead = !this.nextBreakFromHead;
+
+            double startYOffset = fromHead ? 1.5D : 0.5D;
+            Vec3 startPos = this.mob.position().add(0.0D, startYOffset, 0.0D);
+
             Vec3 targetCenter = target.position().add(0, target.getBbHeight() / 2.0, 0);
 
-            double dy = targetCenter.y - eyePos.y;
-            double horizontalDistSq = Math.pow(targetCenter.x - eyePos.x, 2) + Math.pow(targetCenter.z - eyePos.z, 2);
+            double dxH = targetCenter.x - startPos.x;
+            double dy = targetCenter.y - startPos.y;
+            double dzH = targetCenter.z - startPos.z;
+            double horizontalDistSq = dxH * dxH + dzH * dzH;
 
             Vec3 aimVec;
 
-            // --- УМНАЯ МЕХАНИКА ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ ---
-            if (dy > 1.5D && horizontalDistSq > 1.0D) {
-                // Цель ВЫСОКО. Включаем режим "Зигзагообразной Лестницы" (Zigzag Stairs)
-                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
-
-                int zigzagPhase = (int)(this.mob.level().getGameTime() / 30L) % 2;
-                double sideOffset = (zigzagPhase == 0) ? 1.2D : -1.2D;
-
-                Vec3 sideVec = new Vec3(-horizontalVec.z, 0.0D, horizontalVec.x);
-
-                aimVec = new Vec3(
-                        horizontalVec.x + sideVec.x * sideOffset,
-                        1.0D, // Вверх
-                        horizontalVec.z + sideVec.z * sideOffset
-                ).normalize();
-            } else if (dy < -1.5D && horizontalDistSq > 1.0D) {
-                // Цель ГЛУБОКО ВНИЗУ. Делаем безопасный пандус.
-                Vec3 horizontalVec = new Vec3(targetCenter.x - eyePos.x, 0.0D, targetCenter.z - eyePos.z).normalize();
-                aimVec = new Vec3(horizontalVec.x * 2.0D, -1.0D, horizontalVec.z * 2.0D).normalize();
+            if (horizontalDistSq < 0.01D) {
+                aimVec = new Vec3(0.0D, dy > 0 ? 1.0D : -1.0D, 0.0D);
             } else {
-                // Цель примерно на одном уровне. Копаем прямо.
-                aimVec = targetCenter.subtract(eyePos).normalize();
-            }
-            // ------------------------------------------------
+                double heightThreshold = 1.0D;
 
-            int range = (int) Math.ceil(RAYCAST_DISTANCE);
-            BlockPos mobPos = this.mob.blockPosition();
-            BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
-
-            double nearestDistSq = Double.MAX_VALUE;
-            BlockPos nearestBlockPos = null;
-            double maxDistSq = RAYCAST_DISTANCE * RAYCAST_DISTANCE;
-
-            for (int x = -range; x <= range; x++) {
-                for (int y = -range; y <= range; y++) {
-                    for (int z = -range; z <= range; z++) {
-                        mutablePos.set(mobPos.getX() + x, mobPos.getY() + y, mobPos.getZ() + z);
-                        Vec3 blockCenter = Vec3.atCenterOf(mutablePos);
-
-                        double dx = blockCenter.x - eyePos.x;
-                        double dyB = blockCenter.y - eyePos.y;
-                        double dz = blockCenter.z - eyePos.z;
-                        double blockDistSq = dx * dx + dyB * dyB + dz * dz;
-
-                        if (blockDistSq > maxDistSq || blockDistSq < 0.25D) continue;
-
-                        double dot = dx * aimVec.x + dyB * aimVec.y + dz * aimVec.z;
-                        double cosAngle = dot / Math.sqrt(blockDistSq);
-                        if (cosAngle < CONE_THRESHOLD) continue;
-
-                        // ИСПРАВЛЕНО: Заменено OUTLINE на COLLIDER для физических хитбоксов
-                        ClipContext clipContext = new ClipContext(eyePos, blockCenter, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob);
-                        BlockHitResult hitResult = level.clip(clipContext);
-
-                        if (hitResult.getType() == HitResult.Type.BLOCK && hitResult.getBlockPos().equals(mutablePos)) {
-                            BlockState state = level.getBlockState(mutablePos);
-                            if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, mutablePos) >= 0.0F) {
-                                if (blockDistSq < nearestDistSq) {
-                                    nearestDistSq = blockDistSq;
-                                    nearestBlockPos = mutablePos.immutable();
-                                }
-                            }
-                        }
-                    }
+                if (dy > heightThreshold) {
+                    // Цель выше
+                    Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                    aimVec = new Vec3(horizontalVec.x, 1.0D, horizontalVec.z).normalize();
+                } else if (dy < -heightThreshold) {
+                    // Цель ниже
+                    Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                    aimVec = new Vec3(horizontalVec.x, -1.0D, horizontalVec.z).normalize();
+                } else {
+                    // Цель на уровне
+                    aimVec = new Vec3(dxH, 0.0D, dzH).normalize();
                 }
             }
 
-            if (nearestBlockPos != null) {
-                this.pendingAction = PendingAction.BREAK_BLOCK;
-                this.pendingBlockPos = nearestBlockPos;
+            Vec3 endPos = startPos.add(aimVec.scale(RAYCAST_DISTANCE));
 
-                this.mob.getLookControl().setLookAt(nearestBlockPos.getX() + 0.5, nearestBlockPos.getY() + 0.5, nearestBlockPos.getZ() + 0.5, 30.0F, 30.0F);
+            ClipContext clipContext = new ClipContext(startPos, endPos, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
+            BlockHitResult hitResult = level.clip(clipContext);
 
-                this.stuckTicks = 0;
-                startAnimation();
+            if (hitResult.getType() == HitResult.Type.BLOCK) {
+                BlockPos hitPos = hitResult.getBlockPos();
+                BlockState state = level.getBlockState(hitPos);
+
+                if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, hitPos) >= 0.0F) {
+                    this.pendingAction = PendingAction.BREAK_BLOCK;
+                    this.pendingBlockPos = hitPos;
+
+                    this.mob.getLookControl().setLookAt(hitPos.getX() + 0.5, hitPos.getY() + 0.5, hitPos.getZ() + 0.5, 30.0F, 30.0F);
+
+                    this.stuckTicks = 0;
+                    startAnimation();
+                }
             }
         }
     }
-
     private boolean canHitTarget(double distSqr) {
         if (!hasClosedIn) return false;
 
@@ -357,26 +329,32 @@ public class SmartMeleeAttackGoal extends Goal {
         SoundType soundType = state.getSoundType();
         SoundEvent hitSound = soundType.getHitSound();
 
-        // ИСПРАВЛЕНО: Убран мертвый код (else блок) и дублирование частиц
+        level.playSound(null, pos, hitSound, SoundSource.BLOCKS,
+                soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
+
         if (level instanceof ServerLevel serverLevel) {
+            int particleCount = 25;
             float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
             boolean blockBroken = this.mob.getRandom().nextFloat() * 100.0F < chancePercent;
 
             if (blockBroken) {
+                particleCount = 25;
                 level.destroyBlock(pos, dropBlockItems);
-                level.levelEvent(2001, pos, Block.getId(state)); // Уже спавнит частицы и играет звук
-            } else {
-                // Если блок НЕ разрушен, спавним частицы удара и играем звук
-                BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
-                double centerX = pos.getX() + 0.5D;
-                double centerY = pos.getY() + 0.5D;
-                double centerZ = pos.getZ() + 0.5D;
+                level.levelEvent(2001, pos, Block.getId(state));
+            }
 
-                serverLevel.sendParticles(particleOption, centerX, centerY, centerZ,
-                        10, 0.3D, 0.3D, 0.3D, 0.1D);
+            BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
+            double centerX = pos.getX() + 0.5D;
+            double centerY = pos.getY() + 0.5D;
+            double centerZ = pos.getZ() + 0.5D;
 
-                level.playSound(null, pos, hitSound, SoundSource.BLOCKS,
-                        soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
+            serverLevel.sendParticles(particleOption, centerX, centerY, centerZ,
+                    particleCount, 0.3D, 0.3D, 0.3D, 0.1D);
+        } else {
+            float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
+            if (this.mob.getRandom().nextFloat() * 100.0F < chancePercent) {
+                level.destroyBlock(pos, dropBlockItems);
+                level.levelEvent(2001, pos, Block.getId(state));
             }
         }
     }
