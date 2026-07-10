@@ -20,7 +20,6 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         super(Blocks.WHEAT, pMob, pSpeedModifier, pSearchRange);
         this.radius = radius;
 
-        // Получаем кадр удара из моба
         if (pMob instanceof AnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
         } else {
@@ -89,14 +88,12 @@ public class RemoveCropGoal extends RemoveBlockGoal {
             if (this.animationTicks > 0) {
                 this.animationTicks--;
 
-                // ВЫЧИСЛЯЕМ ПРОШЕДШИЕ КАДРЫ
                 int animationLength = 0;
                 if (this.mob instanceof AnimatedAttacker attacker) {
                     animationLength = attacker.getAttackAnimationLength();
                 }
                 int elapsedFrames = animationLength - this.animationTicks;
 
-                // УДАР НА ДИНАМИЧЕСКОМ КАДРЕ!
                 if (elapsedFrames == this.attackImpactFrame) {
                     destroyCrops();
                 }

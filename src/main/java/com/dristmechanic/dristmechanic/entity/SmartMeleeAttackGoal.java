@@ -20,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.EnumSet;
 
+@SuppressWarnings("resource")
 public class SmartMeleeAttackGoal extends Goal {
     protected final PathfinderMob mob;
     private final double speedModifier;
@@ -41,7 +42,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAYCAST_DISTANCE = 3.0D;
+    private static final double RAY_CAST_DISTANCE = 3.0D;
 
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
@@ -51,7 +52,10 @@ public class SmartMeleeAttackGoal extends Goal {
     private BlockPos pendingBlockPos = null;
     private LivingEntity pendingTarget = null;
 
-    private boolean nextBreakFromHead = true;
+    private boolean isAttacking = false;
+    private boolean hasCompletedOneCycle = false;
+
+    private Vec3 lastTargetVector = null;
 
     private enum PendingAction {
         BREAK_BLOCK, ATTACK_TARGET
@@ -69,7 +73,7 @@ public class SmartMeleeAttackGoal extends Goal {
         this.dropBlockItems = dropBlockItems;
 
         this.attackAnimationLength = animationTicks;
-        this.attackInterval = animationTicks + 5;
+        this.attackInterval = animationTicks;
 
         if (mob instanceof AnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
@@ -86,14 +90,12 @@ public class SmartMeleeAttackGoal extends Goal {
         if (target != null && target.isAlive()) {
             return true;
         }
-        if (attackAnimationTicks > 0 || !isCooldownFinished()) {
-            return true;
-        }
-        return false;
+        return isAttacking;
     }
 
     @Override
     public boolean canContinueToUse() {
+        if (isAttacking) return true;
         return canUse();
     }
 
@@ -108,9 +110,12 @@ public class SmartMeleeAttackGoal extends Goal {
         this.hasClosedIn = false;
         this.hasUsedExtendedAttack = false;
         this.attackAnimationTicks = 0;
+        this.isAttacking = false;
+        this.hasCompletedOneCycle = false;
         this.pendingAction = null;
         this.stuckTicks = 0;
         this.lastPos = null;
+        this.lastTargetVector = null;
     }
 
     @Override
@@ -118,13 +123,16 @@ public class SmartMeleeAttackGoal extends Goal {
         this.mob.setAggressive(false);
         this.mob.getNavigation().stop();
 
-        if (this.attackAnimationTicks > 0 && this.mob instanceof AnimatedAttacker attacker) {
+        if (isAttacking && this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(false);
-            this.attackAnimationTicks = 0;
+            this.isAttacking = false;
         }
+        this.hasCompletedOneCycle = false;
+        this.attackAnimationTicks = 0;
         this.pendingAction = null;
         this.stuckTicks = 0;
         this.lastPos = null;
+        this.lastTargetVector = null;
     }
 
     @Override
@@ -132,40 +140,94 @@ public class SmartMeleeAttackGoal extends Goal {
         return true;
     }
 
-    private boolean isCooldownFinished() {
+    private boolean isOnCooldown() {
         long gameTime = this.mob.level().getGameTime();
-        return gameTime - this.lastCanUseTime >= (long) this.attackInterval;
+        return gameTime - this.lastCanUseTime < (long) this.attackInterval;
     }
 
     @Override
     public void tick() {
-        if (this.attackAnimationTicks > 0) {
-            if (this.pendingAction == PendingAction.BREAK_BLOCK && this.pendingBlockPos != null) {
-                this.mob.getLookControl().setLookAt(this.pendingBlockPos.getX() + 0.5, this.pendingBlockPos.getY() + 0.5, this.pendingBlockPos.getZ() + 0.5, 30.0F, 30.0F);
-            } else if (this.pendingAction == PendingAction.ATTACK_TARGET && this.pendingTarget != null && this.pendingTarget.isAlive()) {
-                this.mob.getLookControl().setLookAt(this.pendingTarget, 30.0F, 30.0F);
+        LivingEntity target = this.mob.getTarget();
+
+        if (isAttacking) {
+            boolean shouldStop = false;
+            if (this.pendingAction == PendingAction.BREAK_BLOCK) {
+                if (this.pendingBlockPos != null) {
+                    BlockState state = this.mob.level().getBlockState(this.pendingBlockPos);
+                    boolean isStillObstacle = !state.isAir() && state.getFluidState().isEmpty() && state.getDestroySpeed(this.mob.level(), this.pendingBlockPos) >= 0.0F;
+
+                    if (!isStillObstacle) {
+                        shouldStop = true;
+                    } else if (target != null && this.lastTargetVector != null) {
+                        double distSqr = this.mob.distanceToSqr(target);
+
+                        if (distSqr <= this.closeDistanceSq) {
+                            hasClosedIn = true;
+                        }
+
+                        if (canHitTarget(distSqr)) {
+                            shouldStop = true;
+                        } else {
+                            Vec3 currentTargetVec = target.position().subtract(this.mob.position());
+                            Vec3 currentHorizontalVec = new Vec3(currentTargetVec.x, 0.0D, currentTargetVec.z);
+
+                            if (currentHorizontalVec.lengthSqr() > 0.01D) {
+                                currentHorizontalVec = currentHorizontalVec.normalize();
+                                double dot = this.lastTargetVector.dot(currentHorizontalVec);
+                                if (dot < 0.65D) {
+                                    shouldStop = true;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    shouldStop = true;
+                }
             } else {
-                LivingEntity t = this.mob.getTarget();
-                if (t != null && t.isAlive()) {
-                    this.mob.getLookControl().setLookAt(t, 30.0F, 30.0F);
+                if (target == null || !target.isAlive()) {
+                    shouldStop = true;
+                } else {
+                    double distSqr = this.mob.distanceToSqr(target);
+                    if (distSqr > this.extendedReachSq) {
+                        shouldStop = true;
+                    }
                 }
             }
 
-            this.attackAnimationTicks--;
-            int elapsedFrames = this.attackAnimationLength - this.attackAnimationTicks;
+            if (this.pendingAction == PendingAction.BREAK_BLOCK && this.pendingBlockPos != null) {
+                this.mob.getLookControl().setLookAt(this.pendingBlockPos.getX() + 0.5, this.pendingBlockPos.getY() + 0.5, this.pendingBlockPos.getZ() + 0.5, 30.0F, 30.0F);
+            } else if (target != null) {
+                this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
+            }
 
-            if (elapsedFrames == this.attackImpactFrame) {
-                performPendingAction();
+            this.attackAnimationTicks++;
+
+            if (this.attackAnimationTicks == this.attackImpactFrame) {
+                if (!isOnCooldown()) {
+                    performPendingAction();
+                    this.lastCanUseTime = this.mob.level().getGameTime();
+                }
+            }
+
+            if (this.attackAnimationTicks >= this.attackAnimationLength) {
+                this.attackAnimationTicks = 0;
+                this.hasCompletedOneCycle = true;
+            }
+
+            if (shouldStop && this.hasCompletedOneCycle && this.attackAnimationTicks == 0) {
+                isAttacking = false;
+                if (this.mob instanceof AnimatedAttacker attacker) {
+                    attacker.setAttackingState(false);
+                }
+                if (this.pendingAction == PendingAction.BREAK_BLOCK) {
+                    this.stuckTicks = 0;
+                }
                 this.pendingAction = null;
+                this.lastTargetVector = null;
             }
 
-            if (this.attackAnimationTicks == 0 && this.mob instanceof AnimatedAttacker attacker) {
-                attacker.setAttackingState(false);
-            }
             return;
         }
-
-        LivingEntity target = this.mob.getTarget();
 
         if (this.lastPos != null) {
             double moveDistSq = this.mob.position().distanceToSqr(this.lastPos);
@@ -199,9 +261,23 @@ public class SmartMeleeAttackGoal extends Goal {
             } else if (distSqr > this.extendedReachSq) {
                 hasClosedIn = false;
             }
+
+            if (canHitTarget(distSqr)) {
+                isAttacking = true;
+                this.pendingAction = PendingAction.ATTACK_TARGET;
+                this.pendingTarget = target;
+                if (this.mob instanceof AnimatedAttacker attacker) {
+                    attacker.setAttackingState(true);
+                }
+                this.attackAnimationTicks = 0;
+                this.hasCompletedOneCycle = false;
+                return;
+            }
+        } else {
+            this.mob.getNavigation().stop();
         }
 
-        if (!isCooldownFinished()) {
+        if (isOnCooldown()) {
             return;
         }
 
@@ -216,74 +292,94 @@ public class SmartMeleeAttackGoal extends Goal {
             return;
         }
 
-        double distSqr = this.mob.distanceToSqr(target);
-
-        if (canHitTarget(distSqr)) {
-            this.pendingAction = PendingAction.ATTACK_TARGET;
-            this.pendingTarget = target;
-            this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
-            startAnimation();
-            return;
-        }
-
         boolean isStuck = (this.stuckTicks >= STUCK_THRESHOLD);
 
         if (isStuck) {
-            boolean fromHead = this.nextBreakFromHead;
-            this.nextBreakFromHead = !this.nextBreakFromHead;
-
-            double startYOffset = fromHead ? 1.5D : 0.5D;
-            Vec3 startPos = this.mob.position().add(0.0D, startYOffset, 0.0D);
-
+            Vec3 mobBottom = this.mob.position();
             Vec3 targetCenter = target.position().add(0, target.getBbHeight() / 2.0, 0);
 
-            double dxH = targetCenter.x - startPos.x;
-            double dy = targetCenter.y - startPos.y;
-            double dzH = targetCenter.z - startPos.z;
+            double dxH = targetCenter.x - mobBottom.x;
+            double dy = targetCenter.y - mobBottom.y;
+            double dzH = targetCenter.z - mobBottom.z;
             double horizontalDistSq = dxH * dxH + dzH * dzH;
 
             Vec3 aimVec;
-
             if (horizontalDistSq < 0.01D) {
                 aimVec = new Vec3(0.0D, dy > 0 ? 1.0D : -1.0D, 0.0D);
             } else {
-                double heightThreshold = 1.0D;
+                Vec3 horizontalVec;
+                if (Math.abs(dxH) >= Math.abs(dzH)) {
+                    horizontalVec = new Vec3(dxH > 0 ? 1.0D : -1.0D, 0.0D, 0.0D);
+                } else {
+                    horizontalVec = new Vec3(0.0D, 0.0D, dzH > 0 ? 1.0D : -1.0D);
+                }
 
+                double heightThreshold = 1.0D;
                 if (dy > heightThreshold) {
-                    // Цель выше
-                    Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
                     aimVec = new Vec3(horizontalVec.x, 1.0D, horizontalVec.z).normalize();
                 } else if (dy < -heightThreshold) {
-                    // Цель ниже
-                    Vec3 horizontalVec = new Vec3(dxH, 0.0D, dzH).normalize();
                     aimVec = new Vec3(horizontalVec.x, -1.0D, horizontalVec.z).normalize();
                 } else {
-                    // Цель на уровне
-                    aimVec = new Vec3(dxH, 0.0D, dzH).normalize();
+                    aimVec = horizontalVec;
                 }
             }
 
-            Vec3 endPos = startPos.add(aimVec.scale(RAYCAST_DISTANCE));
+            Vec3 startPosHead = this.mob.position().add(0.0D, 1.5D, 0.0D);
+            Vec3 startPosLegs = this.mob.position().add(0.0D, 0.5D, 0.0D);
 
-            ClipContext clipContext = new ClipContext(startPos, endPos, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
-            BlockHitResult hitResult = level.clip(clipContext);
+            Vec3 endPosHead = startPosHead.add(aimVec.scale(RAY_CAST_DISTANCE));
+            Vec3 endPosLegs = startPosLegs.add(aimVec.scale(RAY_CAST_DISTANCE));
 
-            if (hitResult.getType() == HitResult.Type.BLOCK) {
-                BlockPos hitPos = hitResult.getBlockPos();
-                BlockState state = level.getBlockState(hitPos);
+            ClipContext contextHead = new ClipContext(startPosHead, endPosHead, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
+            ClipContext contextLegs = new ClipContext(startPosLegs, endPosLegs, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, this.mob);
 
-                if (!state.isAir() && !state.liquid() && state.getDestroySpeed(level, hitPos) >= 0.0F) {
-                    this.pendingAction = PendingAction.BREAK_BLOCK;
-                    this.pendingBlockPos = hitPos;
+            BlockHitResult hitResultHead = level.clip(contextHead);
+            BlockHitResult hitResultLegs = level.clip(contextLegs);
 
-                    this.mob.getLookControl().setLookAt(hitPos.getX() + 0.5, hitPos.getY() + 0.5, hitPos.getZ() + 0.5, 30.0F, 30.0F);
+            BlockPos posHead = null;
+            BlockPos posLegs = null;
+            double distHead = Double.MAX_VALUE;
+            double distLegs = Double.MAX_VALUE;
 
-                    this.stuckTicks = 0;
-                    startAnimation();
-                }
+            if (isValidBlockHit(hitResultHead, level)) {
+                distHead = hitResultHead.getLocation().distanceToSqr(startPosHead);
+                posHead = hitResultHead.getBlockPos();
+            }
+            if (isValidBlockHit(hitResultLegs, level)) {
+                distLegs = hitResultLegs.getLocation().distanceToSqr(startPosLegs);
+                posLegs = hitResultLegs.getBlockPos();
+            }
+
+            BlockPos bestPos;
+            if (posHead == null) {
+                bestPos = posLegs;
+            } else if (posLegs == null) {
+                bestPos = posHead;
+            } else {
+                bestPos = distHead < distLegs ? posHead : posLegs;
+            }
+
+            if (bestPos != null) {
+                this.pendingAction = PendingAction.BREAK_BLOCK;
+                this.pendingBlockPos = bestPos;
+
+                this.mob.getLookControl().setLookAt(bestPos.getX() + 0.5, bestPos.getY() + 0.5, bestPos.getZ() + 0.5, 30.0F, 30.0F);
+
+                Vec3 targetVec = target.position().subtract(this.mob.position());
+                this.lastTargetVector = new Vec3(targetVec.x, 0.0D, targetVec.z).normalize();
+
+                this.stuckTicks = 0;
+                startAnimation();
             }
         }
     }
+
+    private boolean isValidBlockHit(BlockHitResult hitResult, Level level) {
+        if (hitResult.getType() != HitResult.Type.BLOCK) return false;
+        BlockState state = level.getBlockState(hitResult.getBlockPos());
+        return !state.isAir() && state.getFluidState().isEmpty() && state.getDestroySpeed(level, hitResult.getBlockPos()) >= 0.0F;
+    }
+
     private boolean canHitTarget(double distSqr) {
         if (!hasClosedIn) return false;
 
@@ -297,14 +393,18 @@ public class SmartMeleeAttackGoal extends Goal {
     }
 
     private void startAnimation() {
+        isAttacking = true;
+        this.attackAnimationTicks = 0;
+        this.hasCompletedOneCycle = false;
+
         if (this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(true);
-            this.attackAnimationTicks = this.attackAnimationLength;
-            this.lastCanUseTime = this.mob.level().getGameTime();
         } else {
             performPendingAction();
-            this.pendingAction = null;
             this.lastCanUseTime = this.mob.level().getGameTime();
+            isAttacking = false;
+            this.pendingAction = null;
+            this.lastTargetVector = null;
         }
     }
 
@@ -313,7 +413,12 @@ public class SmartMeleeAttackGoal extends Goal {
             attemptBreakBlock(this.pendingBlockPos);
         } else if (this.pendingAction == PendingAction.ATTACK_TARGET && this.pendingTarget != null) {
             if (this.pendingTarget.isAlive()) {
-                this.mob.doHurtTarget(this.pendingTarget);
+                double distSqr = this.mob.distanceToSqr(this.pendingTarget);
+                double maxReach = Math.max(Math.sqrt(this.attackReachSq), Math.sqrt(this.extendedReachSq));
+                double allowedReachSq = maxReach * maxReach;
+                if (distSqr <= allowedReachSq) {
+                    this.mob.doHurtTarget(this.pendingTarget);
+                }
             }
         }
     }
@@ -321,41 +426,33 @@ public class SmartMeleeAttackGoal extends Goal {
     private void attemptBreakBlock(BlockPos pos) {
         Level level = this.mob.level();
         BlockState state = level.getBlockState(pos);
-        if (state.isAir() || state.liquid()) return;
+        if (state.isAir() || !state.getFluidState().isEmpty()) return;
 
         float hardness = state.getDestroySpeed(level, pos);
         if (hardness < 0.0F) return;
 
-        SoundType soundType = state.getSoundType();
+        SoundType soundType = state.getSoundType(level, pos, this.mob);
         SoundEvent hitSound = soundType.getHitSound();
 
         level.playSound(null, pos, hitSound, SoundSource.BLOCKS,
                 soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
 
+        float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
+        boolean blockBroken = this.mob.getRandom().nextFloat() * 100.0F < chancePercent;
+
+        if (blockBroken) {
+            level.destroyBlock(pos, dropBlockItems);
+            level.levelEvent(2001, pos, Block.getId(state));
+        }
+
         if (level instanceof ServerLevel serverLevel) {
-            int particleCount = 25;
-            float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
-            boolean blockBroken = this.mob.getRandom().nextFloat() * 100.0F < chancePercent;
-
-            if (blockBroken) {
-                particleCount = 25;
-                level.destroyBlock(pos, dropBlockItems);
-                level.levelEvent(2001, pos, Block.getId(state));
-            }
-
             BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
             double centerX = pos.getX() + 0.5D;
             double centerY = pos.getY() + 0.5D;
             double centerZ = pos.getZ() + 0.5D;
 
             serverLevel.sendParticles(particleOption, centerX, centerY, centerZ,
-                    particleCount, 0.3D, 0.3D, 0.3D, 0.1D);
-        } else {
-            float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
-            if (this.mob.getRandom().nextFloat() * 100.0F < chancePercent) {
-                level.destroyBlock(pos, dropBlockItems);
-                level.levelEvent(2001, pos, Block.getId(state));
-            }
+                    25, 0.3D, 0.3D, 0.3D, 0.1D);
         }
     }
 }

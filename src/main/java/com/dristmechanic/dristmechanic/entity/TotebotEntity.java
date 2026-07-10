@@ -49,22 +49,14 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
 
-        // Единый умный Goal: Атака + Разрушение блоков
-        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(
-                this, 1.0D, true,
-                getAttackAnimationLength(), // Берем длину из интерфейса (14)
-                1.5, 1.9, 2.3,
-                true // false = уничтожать блоки без дропа
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 1.5, 2.2, 3.0, true
         ));
 
-        // Уничтожение урожая
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 2));
 
-        // Бродилка
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
 
-        // Цели (кого атаковать)
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
     }
