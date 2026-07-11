@@ -24,6 +24,7 @@ public class SmoothPathNavigation extends GroundPathNavigation {
 
     @Override
     @Nullable
+    @SuppressWarnings({"NullableProblems", "ConstantConditions"})
     public Path createPath(@NotNull BlockPos pos, int distance) {
         Path path = super.createPath(pos, distance);
 
@@ -31,7 +32,7 @@ public class SmoothPathNavigation extends GroundPathNavigation {
     }
 
     private Path smoothPath(Path path) {
-        if (path.getNodeCount() < 3) return path;
+        if (path == null || path.getNodeCount() < 3) return path;
 
         List<Node> smoothedNodes = new ArrayList<>();
         smoothedNodes.add(path.getNode(0));

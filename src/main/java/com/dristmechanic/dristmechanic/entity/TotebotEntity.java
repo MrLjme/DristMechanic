@@ -37,12 +37,12 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     }
 
     @Override
-    @NotNull // Исправлено предупреждение Not annotated method
+    @NotNull
     protected PathNavigation createNavigation(@NotNull Level level) { // Исправлено Not annotated parameter
         return new SmoothPathNavigation(this, level);
     }
 
-    @NotNull // Исправлено предупреждение Not annotated method
+    @NotNull
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 18.0D)
@@ -101,7 +101,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         super.tick();
         double speed = this.isAggressive() ? 0.31 : 0.29;
 
-        // Исправлено предупреждение NullPointerException
         var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
         if (speedAttribute != null) {
             speedAttribute.setBaseValue(speed);

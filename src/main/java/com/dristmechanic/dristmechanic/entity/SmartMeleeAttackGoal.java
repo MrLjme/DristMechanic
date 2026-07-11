@@ -42,7 +42,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAY_CAST_DISTANCE = 3.0D;
+    private static final double RAY_CAST_DISTANCE = 1.0D;
 
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
