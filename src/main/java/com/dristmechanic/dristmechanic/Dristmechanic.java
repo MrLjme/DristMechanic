@@ -1,9 +1,15 @@
 package com.dristmechanic.dristmechanic;
 
+import com.dristmechanic.dristmechanic.client.FlashBigParticle;
+import com.dristmechanic.dristmechanic.client.FlashSmallParticle;
+import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -18,6 +24,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -29,11 +36,12 @@ import org.slf4j.Logger;
 public class Dristmechanic {
     public static final String MODID = "dristmechanic";
     private static final Logger LOGGER = LogUtils.getLogger();
-
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
-
-    // Спавн-яйцо для Totebot
+    public static final DeferredRegister<ParticleType<?>> PARTICLES = DeferredRegister.create(BuiltInRegistries.PARTICLE_TYPE, MODID);
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_BIG = PARTICLES.register("flash_big", () -> new SimpleParticleType(false));
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_SMALL = PARTICLES.register("flash_small", () -> new SimpleParticleType(false));
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
             properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x4A4A4A, 0xFF6600, properties));
 
@@ -50,6 +58,9 @@ public class Dristmechanic {
     public Dristmechanic(IEventBus modEventBus, ModContainer modContainer) {
         ITEMS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
+
+        // ВАЖНО: Регистрация частиц в шине событий!
+        PARTICLES.register(modEventBus);
 
         // Регистрация сущностей
         ModEntities.ENTITIES.register(modEventBus);
@@ -76,6 +87,28 @@ public class Dristmechanic {
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
             event.registerEntityRenderer(ModEntities.TOTEBOT.get(), TotebotRenderer::new);
+        }
+
+        // РЕГИСТРАЦИЯ ПРОВАЙДЕРОВ ЧАСТИЦ НА КЛИЕНТЕ
+        @SubscribeEvent
+        public static void registerParticles(RegisterParticleProvidersEvent event) {
+            // Большая вспышка
+            event.registerSpriteSet(Dristmechanic.FLASH_BIG.get(), spriteSet ->
+                    (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
+                            new FlashBigParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
+            );
+
+            // Мелкие частицы вспышки
+            event.registerSpriteSet(Dristmechanic.FLASH_SMALL.get(), spriteSet ->
+                    (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
+                            new FlashSmallParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
+            );
+
+            // Скрап (винтики/болтики)
+            event.registerSpriteSet(Dristmechanic.SCRAP.get(), spriteSet ->
+                    (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
+                            new ScrapParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
+            );
         }
     }
 }

@@ -1,8 +1,12 @@
 package com.dristmechanic.dristmechanic.entity;
 
+import com.dristmechanic.dristmechanic.Dristmechanic;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -127,5 +131,57 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     public int getAttackImpactFrame() {
         return 13;
+    }
+
+    // 1. Перехватываем получение урона (в 1.21.1 это метод hurt)
+    @Override
+    public boolean hurt(DamageSource damageSource, float damage) {
+        boolean flag = super.hurt(damageSource, damage);
+        // Если урон успешно нанесен и мы на сервере
+        if (flag && !this.level().isClientSide) {
+            // Спавним кастомные частицы при уроне (например, искры крита)
+            ((ServerLevel) this.level()).sendParticles(
+                    ParticleTypes.CRIT,
+                    this.getX(), this.getY(0.5D), this.getZ(),
+                    10, 0.2D, 0.2D, 0.2D, 0.0D
+            );
+        }
+        return flag;
+    }
+
+    @Override
+    public void die(DamageSource damageSource) {
+        super.die(damageSource);
+
+        if (!this.level().isClientSide) {
+            ServerLevel serverLevel = (ServerLevel) this.level();
+
+            // 1. Большая вспышка (1 шт, без разброса)
+            serverLevel.sendParticles(Dristmechanic.FLASH_BIG.get(),
+                    this.getX(), this.getY(0.5D), this.getZ(),
+                    1, 0, 0, 0, 0);
+
+            // 2. Мелкие частицы облака (разлетаются в стороны)
+            serverLevel.sendParticles(Dristmechanic.FLASH_SMALL.get(),
+                    this.getX(), this.getY(0.5D), this.getZ(),
+            15, 0.3D, 0.3D, 0.3D, 0.03D);
+
+            // 3. Винтики/болтики с гравитацией
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
+                    this.getX(), this.getY(0.5D), this.getZ(),
+                    20, 0.5D, 0.5D, 0.5D, 0.3D);
+
+            this.discard();
+        }
+    }
+
+    // 3. Перехватываем событие смерти (id = 3), чтобы отменить ванильные белые облачка (POOF)
+    @Override
+    public void handleEntityEvent(byte id) {
+        if (id == 3) {
+            // Ничего не делаем. Это предотвратит спавн стандартных ванильных частиц на клиенте.
+            return;
+        }
+        super.handleEntityEvent(id);
     }
 }
