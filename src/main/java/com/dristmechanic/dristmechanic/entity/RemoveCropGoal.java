@@ -4,17 +4,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.RemoveBlockGoal;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.NotNull;
 
 public class RemoveCropGoal extends RemoveBlockGoal {
     private final int radius;
-    private boolean hasDestroyed = false;
-    private int animationTicks = 0;
+    private int ticksAnimating = 0;
     private boolean isAnimating = false;
     private final int attackImpactFrame;
+    private final int animationLength;
 
     public RemoveCropGoal(PathfinderMob pMob, double pSpeedModifier, int pSearchRange, int radius) {
         super(Blocks.WHEAT, pMob, pSpeedModifier, pSearchRange);
@@ -22,41 +21,35 @@ public class RemoveCropGoal extends RemoveBlockGoal {
 
         if (pMob instanceof AnimatedAttacker attacker) {
             this.attackImpactFrame = attacker.getAttackImpactFrame();
+            this.animationLength = attacker.getAttackAnimationLength();
         } else {
-            this.attackImpactFrame = 9; // Fallback
+            this.attackImpactFrame = 9;
+            this.animationLength = 20;
         }
     }
 
     @Override
-    protected boolean isValidTarget(LevelReader level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        return state.is(BlockTags.CROPS);
+    protected boolean isValidTarget(@NotNull LevelReader level, @NotNull BlockPos pos) {
+        return level.getBlockState(pos).is(BlockTags.CROPS);
     }
 
     @Override
+    @SuppressWarnings("resource")
     public boolean canContinueToUse() {
-        if (hasDestroyed) return false;
-
-        BlockPos target = this.blockPos;
-        if (target == null) return false;
-
-        Level level = (Level) this.mob.level();
-        return level.getBlockState(target).is(BlockTags.CROPS);
+        return this.mob.level().getBlockState(this.blockPos).is(BlockTags.CROPS);
     }
 
     @Override
     public void start() {
         super.start();
-        hasDestroyed = false;
-        animationTicks = 0;
+        ticksAnimating = 0;
         isAnimating = false;
     }
 
     @Override
     public void stop() {
         super.stop();
-        hasDestroyed = false;
-        animationTicks = 0;
+        ticksAnimating = 0;
 
         if (isAnimating && this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(false);
@@ -67,64 +60,57 @@ public class RemoveCropGoal extends RemoveBlockGoal {
     @Override
     public void tick() {
         super.tick();
-        if (hasDestroyed) return;
 
-        BlockPos target = this.blockPos;
-        if (target == null) return;
+        double distSq = this.mob.distanceToSqr(this.blockPos.getX() + 0.5, this.blockPos.getY() + 0.5, this.blockPos.getZ() + 0.5);
 
-        if (this.mob.distanceToSqr(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5) <= 4.0) {
+        if (distSq <= 4.0) {
+            this.mob.getNavigation().stop();
+            this.mob.getLookControl().setLookAt(this.blockPos.getX() + 0.5, this.blockPos.getY() + 0.5, this.blockPos.getZ() + 0.5, 10.0F, 30.0F);
 
             if (!isAnimating) {
                 if (this.mob instanceof AnimatedAttacker attacker) {
                     attacker.setAttackingState(true);
-                    this.animationTicks = attacker.getAttackAnimationLength();
                     this.isAnimating = true;
-                } else {
-                    destroyCrops();
-                    return;
                 }
             }
 
-            if (this.animationTicks > 0) {
-                this.animationTicks--;
+            if (this.isAnimating) {
+                this.ticksAnimating++;
 
-                int animationLength = 0;
-                if (this.mob instanceof AnimatedAttacker attacker) {
-                    animationLength = attacker.getAttackAnimationLength();
-                }
-                int elapsedFrames = animationLength - this.animationTicks;
-
-                if (elapsedFrames == this.attackImpactFrame) {
-                    destroyCrops();
+                if (this.ticksAnimating == this.attackImpactFrame) {
+                    destroyCrops(this.blockPos);
                 }
 
-                if (this.animationTicks == 0) {
+                if (this.ticksAnimating >= this.animationLength) {
                     if (this.mob instanceof AnimatedAttacker attacker) {
                         attacker.setAttackingState(false);
-                        this.isAnimating = false;
                     }
+                    this.isAnimating = false;
+                    this.ticksAnimating = 0;
                 }
+            }
+        } else {
+            if (isAnimating && this.mob instanceof AnimatedAttacker attacker) {
+                attacker.setAttackingState(false);
+                isAnimating = false;
+                ticksAnimating = 0;
             }
         }
     }
 
-    private void destroyCrops() {
-        Level world = (Level) this.mob.level();
-        BlockPos center = this.mob.blockPosition();
-
+    @SuppressWarnings("resource")
+    private void destroyCrops(BlockPos center) {
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (dx * dx + dy * dy + dz * dz <= radius * radius) {
                         BlockPos pos = center.offset(dx, dy, dz);
-                        BlockState state = world.getBlockState(pos);
-                        if (state.is(BlockTags.CROPS)) {
-                            world.destroyBlock(pos, false, this.mob);
+                        if (this.mob.level().getBlockState(pos).is(BlockTags.CROPS)) {
+                            this.mob.level().destroyBlock(pos, false, this.mob);
                         }
                     }
                 }
             }
         }
-        hasDestroyed = true;
     }
 }

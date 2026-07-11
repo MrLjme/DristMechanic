@@ -11,17 +11,19 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.NotNull;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.*;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacker {
-    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -29,11 +31,18 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     }
 
     @Override
-    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+    protected void defineSynchedData(@NotNull SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(ATTACKING, false);
     }
 
+    @Override
+    @NotNull // Исправлено предупреждение Not annotated method
+    protected PathNavigation createNavigation(@NotNull Level level) { // Исправлено Not annotated parameter
+        return new SmoothPathNavigation(this, level);
+    }
+
+    @NotNull // Исправлено предупреждение Not annotated method
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 18.0D)
@@ -48,30 +57,21 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-
-        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 1.5, 2.2, 3.0, true
-        ));
-
-        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 2));
-
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 1.5, 2.2, 3.0, true));
+        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
-
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
-
             if (this.isAttacking()) {
                 return event.setAndContinue(RawAnimation.begin().thenPlay("totebotattack"));
             }
-
             boolean isMoving = event.isMoving() || this.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4D;
-
             if (isMoving) {
                 if (this.isAggressive()) {
                     return event.setAndContinue(RawAnimation.begin().thenLoop("totebotrun"));
@@ -79,7 +79,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
                     return event.setAndContinue(RawAnimation.begin().thenLoop("totebotwalk"));
                 }
             }
-
             return event.setAndContinue(RawAnimation.begin().thenLoop("totebotidle"));
         }));
     }
@@ -93,8 +92,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         return this.entityData.get(ATTACKING);
     }
 
-
-
     public void setAttacking(boolean attacking) {
         this.entityData.set(ATTACKING, attacking);
     }
@@ -103,7 +100,12 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     public void tick() {
         super.tick();
         double speed = this.isAggressive() ? 0.31 : 0.29;
-        this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(speed);
+
+        // Исправлено предупреждение NullPointerException
+        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttribute != null) {
+            speedAttribute.setBaseValue(speed);
+        }
     }
 
     @Override
