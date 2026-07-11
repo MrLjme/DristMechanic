@@ -6,6 +6,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -28,12 +29,10 @@ public class SmartMeleeAttackGoal extends Goal {
     private int ticksUntilNextPathRecalculation;
     private long lastCanUseTime;
 
-    private final double closeDistanceSq;
-    private final double attackReachSq;
-    private final double extendedReachSq;
-
-    private boolean hasClosedIn = false;
-    private boolean hasUsedExtendedAttack = false;
+    private final double approachDistanceSq; // Малый радиус (куда моб идет)
+    private final double attackReachSq;     // Средний радиус (когда начинает бить)
+    private final double extendedReachSq;   // Дальний радиус (пока в нем - продолжает бить)
+    private final double attackAngleCos;
 
     private final int attackAnimationLength;
     private final int attackInterval;
@@ -42,7 +41,7 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
 
     private final boolean dropBlockItems;
-    private static final double RAY_CAST_DISTANCE = 1.0D;
+    private static final double RAY_CAST_DISTANCE = 3.0D;
 
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
@@ -62,14 +61,15 @@ public class SmartMeleeAttackGoal extends Goal {
     }
 
     public SmartMeleeAttackGoal(PathfinderMob mob, double speedModifier, boolean followingTargetEvenIfNotSeen,
-                                int animationTicks, double closeDistance, double attackReach, double extendedReach,
-                                boolean dropBlockItems) {
+                                int animationTicks, double approachDistance, double attackReach, double extendedReach,
+                                double attackAngleDegrees, boolean dropBlockItems) {
         this.mob = mob;
         this.speedModifier = speedModifier;
         this.followingTargetEvenIfNotSeen = followingTargetEvenIfNotSeen;
-        this.closeDistanceSq = closeDistance * closeDistance;
+        this.approachDistanceSq = approachDistance * approachDistance;
         this.attackReachSq = attackReach * attackReach;
         this.extendedReachSq = extendedReach * extendedReach;
+        this.attackAngleCos = Math.cos(Math.toRadians(attackAngleDegrees));
         this.dropBlockItems = dropBlockItems;
 
         this.attackAnimationLength = animationTicks;
@@ -103,12 +103,11 @@ public class SmartMeleeAttackGoal extends Goal {
     public void start() {
         LivingEntity target = this.mob.getTarget();
         if (target != null) {
-            this.mob.getNavigation().moveTo(target, this.speedModifier);
+            // Идем точно в координаты цели, игнорируя её хитбокс, чтобы толкаться
+            this.mob.getNavigation().moveTo(target.getX(), target.getY(), target.getZ(), this.speedModifier);
         }
         this.mob.setAggressive(true);
         this.ticksUntilNextPathRecalculation = 0;
-        this.hasClosedIn = false;
-        this.hasUsedExtendedAttack = false;
         this.attackAnimationTicks = 0;
         this.isAttacking = false;
         this.hasCompletedOneCycle = false;
@@ -145,11 +144,30 @@ public class SmartMeleeAttackGoal extends Goal {
         return gameTime - this.lastCanUseTime < (long) this.attackInterval;
     }
 
+    private boolean isInAttackAngle(LivingEntity target) {
+        float bodyYaw = this.mob.yBodyRot;
+        float rad = bodyYaw * ((float)Math.PI / 180.0F);
+
+        Vec3 bodyVector = new Vec3((double)(-Mth.sin(rad)), 0.0D, (double)Mth.cos(rad));
+
+        Vec3 toTarget = target.position().subtract(this.mob.position());
+        Vec3 horizontalToTarget = new Vec3(toTarget.x, 0.0D, toTarget.z);
+
+        if (horizontalToTarget.lengthSqr() > 0.01D) {
+            horizontalToTarget = horizontalToTarget.normalize();
+            double dot = bodyVector.dot(horizontalToTarget);
+            return dot >= this.attackAngleCos;
+        }
+        return true;
+    }
+
     @Override
     public void tick() {
         LivingEntity target = this.mob.getTarget();
 
         if (isAttacking) {
+            this.mob.getNavigation().stop(); // Жесткая остановка, чтобы не скользить во время удара
+
             boolean shouldStop = false;
             if (this.pendingAction == PendingAction.BREAK_BLOCK) {
                 if (this.pendingBlockPos != null) {
@@ -159,24 +177,14 @@ public class SmartMeleeAttackGoal extends Goal {
                     if (!isStillObstacle) {
                         shouldStop = true;
                     } else if (target != null && this.lastTargetVector != null) {
-                        double distSqr = this.mob.distanceToSqr(target);
+                        Vec3 currentTargetVec = target.position().subtract(this.mob.position());
+                        Vec3 currentHorizontalVec = new Vec3(currentTargetVec.x, 0.0D, currentTargetVec.z);
 
-                        if (distSqr <= this.closeDistanceSq) {
-                            hasClosedIn = true;
-                        }
-
-                        if (canHitTarget(distSqr)) {
-                            shouldStop = true;
-                        } else {
-                            Vec3 currentTargetVec = target.position().subtract(this.mob.position());
-                            Vec3 currentHorizontalVec = new Vec3(currentTargetVec.x, 0.0D, currentTargetVec.z);
-
-                            if (currentHorizontalVec.lengthSqr() > 0.01D) {
-                                currentHorizontalVec = currentHorizontalVec.normalize();
-                                double dot = this.lastTargetVector.dot(currentHorizontalVec);
-                                if (dot < 0.65D) {
-                                    shouldStop = true;
-                                }
+                        if (currentHorizontalVec.lengthSqr() > 0.01D) {
+                            currentHorizontalVec = currentHorizontalVec.normalize();
+                            double dot = this.lastTargetVector.dot(currentHorizontalVec);
+                            if (dot < 0.65D) {
+                                shouldStop = true;
                             }
                         }
                     }
@@ -188,7 +196,7 @@ public class SmartMeleeAttackGoal extends Goal {
                     shouldStop = true;
                 } else {
                     double distSqr = this.mob.distanceToSqr(target);
-                    if (distSqr > this.extendedReachSq) {
+                    if (distSqr > this.extendedReachSq || !isInAttackAngle(target)) {
                         shouldStop = true;
                     }
                 }
@@ -244,34 +252,37 @@ public class SmartMeleeAttackGoal extends Goal {
             double distSqr = this.mob.distanceToSqr(target);
 
             this.ticksUntilNextPathRecalculation = Math.max(this.ticksUntilNextPathRecalculation - 1, 0);
-            if ((this.followingTargetEvenIfNotSeen || this.mob.getSensing().hasLineOfSight(target))
-                    && this.ticksUntilNextPathRecalculation <= 0) {
-                this.ticksUntilNextPathRecalculation = 4 + this.mob.getRandom().nextInt(7);
-                if (distSqr > 1024.0D) this.ticksUntilNextPathRecalculation += 10;
-                else if (distSqr > 256.0D) this.ticksUntilNextPathRecalculation += 5;
 
-                if (!this.mob.getNavigation().moveTo(target, this.speedModifier)) {
-                    this.ticksUntilNextPathRecalculation += 15;
+            // 1. Моб агрессивно бежит к цели, пока не достигнет МАЛОГО радиуса (approachDistance)
+            if (distSqr > this.approachDistanceSq) {
+                if (this.ticksUntilNextPathRecalculation <= 0) {
+                    this.ticksUntilNextPathRecalculation = 4 + this.mob.getRandom().nextInt(7);
+                    if (distSqr > 1024.0D) this.ticksUntilNextPathRecalculation += 10;
+                    else if (distSqr > 256.0D) this.ticksUntilNextPathRecalculation += 5;
+
+                    if (!this.mob.getNavigation().moveTo(target.getX(), target.getY(), target.getZ(), this.speedModifier)) {
+                        this.ticksUntilNextPathRecalculation += 15;
+                    }
+                } else if (this.mob.getNavigation().isDone()) {
+                    // Если навигация считает, что дошла, но мы еще не в малом радиусе - заставляем толкаться
+                    this.mob.getNavigation().moveTo(target.getX(), target.getY(), target.getZ(), this.speedModifier);
                 }
             }
 
-            if (distSqr <= this.closeDistanceSq) {
-                hasClosedIn = true;
-                hasUsedExtendedAttack = false;
-            } else if (distSqr > this.extendedReachSq) {
-                hasClosedIn = false;
-            }
-
-            if (canHitTarget(distSqr)) {
-                isAttacking = true;
-                this.pendingAction = PendingAction.ATTACK_TARGET;
-                this.pendingTarget = target;
-                if (this.mob instanceof AnimatedAttacker attacker) {
-                    attacker.setAttackingState(true);
+            // 2. Начинаем атаку, только если моб дошел до СРЕДНЕГО радиуса (attackReach)
+            if (distSqr <= this.attackReachSq && isInAttackAngle(target)) {
+                if (!isOnCooldown()) {
+                    isAttacking = true;
+                    this.mob.getNavigation().stop();
+                    this.pendingAction = PendingAction.ATTACK_TARGET;
+                    this.pendingTarget = target;
+                    if (this.mob instanceof AnimatedAttacker attacker) {
+                        attacker.setAttackingState(true);
+                    }
+                    this.attackAnimationTicks = 0;
+                    this.hasCompletedOneCycle = false;
+                    return;
                 }
-                this.attackAnimationTicks = 0;
-                this.hasCompletedOneCycle = false;
-                return;
             }
         } else {
             this.mob.getNavigation().stop();
@@ -380,22 +391,11 @@ public class SmartMeleeAttackGoal extends Goal {
         return !state.isAir() && state.getFluidState().isEmpty() && state.getDestroySpeed(level, hitResult.getBlockPos()) >= 0.0F;
     }
 
-    private boolean canHitTarget(double distSqr) {
-        if (!hasClosedIn) return false;
-
-        if (distSqr <= this.attackReachSq) {
-            return true;
-        } else if (distSqr <= this.extendedReachSq && !hasUsedExtendedAttack) {
-            hasUsedExtendedAttack = true;
-            return true;
-        }
-        return false;
-    }
-
     private void startAnimation() {
         isAttacking = true;
         this.attackAnimationTicks = 0;
         this.hasCompletedOneCycle = false;
+        this.mob.getNavigation().stop();
 
         if (this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(true);
@@ -414,9 +414,7 @@ public class SmartMeleeAttackGoal extends Goal {
         } else if (this.pendingAction == PendingAction.ATTACK_TARGET && this.pendingTarget != null) {
             if (this.pendingTarget.isAlive()) {
                 double distSqr = this.mob.distanceToSqr(this.pendingTarget);
-                double maxReach = Math.max(Math.sqrt(this.attackReachSq), Math.sqrt(this.extendedReachSq));
-                double allowedReachSq = maxReach * maxReach;
-                if (distSqr <= allowedReachSq) {
+                if (distSqr <= this.extendedReachSq && isInAttackAngle(this.pendingTarget)) {
                     this.mob.doHurtTarget(this.pendingTarget);
                 }
             }

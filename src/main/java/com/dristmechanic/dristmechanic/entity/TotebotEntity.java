@@ -49,15 +49,15 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
                 .add(Attributes.ATTACK_DAMAGE, 7.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
-                .add(Attributes.JUMP_STRENGTH, 0.42D)
-                .add(Attributes.FOLLOW_RANGE, 32.0D);
+                .add(Attributes.KNOCKBACK_RESISTANCE, 0.7D)
+                .add(Attributes.JUMP_STRENGTH, 0.0D)
+                .add(Attributes.FOLLOW_RANGE, 16.0D);
     }
 
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 1.5, 2.2, 3.0, true));
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
@@ -105,6 +105,8 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         if (speedAttribute != null) {
             speedAttribute.setBaseValue(speed);
         }
+        float smoothFactor = 0.4F;
+        this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
     }
 
     @Override
