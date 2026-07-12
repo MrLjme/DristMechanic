@@ -15,27 +15,20 @@ public class ScrapParticle extends TextureSheetParticle {
 
     public ScrapParticle(ClientLevel level, double x, double y, double z, double xd, double yd, double zd, SpriteSet spriteSet) {
         super(level, x, y, z, xd, yd, zd);
-
-        // Рандомизируем время жизни (2-3 секунды)
         this.lifetime = 40 + this.random.nextInt(20);
-
-        // Рандомизируем гравитацию
-        this.gravity = 0.5F + this.random.nextFloat() * 0.3F;
-
+        this.gravity = 1.0F;
         this.hasPhysics = true;
-        this.friction = 0.85F + this.random.nextFloat() * 0.1F;
-
-        // Рандомизируем начальный размер
-        float baseScale = 1.0F + this.random.nextFloat() * 1.4F;
+        this.friction = 0.8F;
+        float baseScale = 1.0F + this.random.nextFloat() * 1.6F;
         this.scale(baseScale);
 
         // Инициализируем нашу скорость вращения
         this.angularVelocity = (this.random.nextFloat() - 0.5F) * 0.4F;
 
         // Добавляем небольшой рандом в скорость движения
-        this.xd *= 0.8F + this.random.nextFloat() * 0.4F;
-        this.yd *= 0.8F + this.random.nextFloat() * 0.4F;
-        this.zd *= 0.8F + this.random.nextFloat() * 0.4F;
+        this.xd *= 1.8F + this.random.nextFloat() * 0.4F;
+        this.yd *= 1.8F + this.random.nextFloat() * 0.4F;
+        this.zd *= 1.8F + this.random.nextFloat() * 0.4F;
 
         this.pickSprite(spriteSet);
 

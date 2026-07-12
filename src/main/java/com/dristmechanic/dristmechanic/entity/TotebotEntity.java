@@ -133,18 +133,15 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         return 13;
     }
 
-    // 1. Перехватываем получение урона (в 1.21.1 это метод hurt)
     @Override
     public boolean hurt(DamageSource damageSource, float damage) {
         boolean flag = super.hurt(damageSource, damage);
-        // Если урон успешно нанесен и мы на сервере
-        if (flag && !this.level().isClientSide) {
-            // Спавним кастомные частицы при уроне (например, искры крита)
-            ((ServerLevel) this.level()).sendParticles(
-                    ParticleTypes.CRIT,
-                    this.getX(), this.getY(0.5D), this.getZ(),
-                    10, 0.2D, 0.2D, 0.2D, 0.0D
-            );
+        if (!this.level().isClientSide) {
+            ServerLevel serverLevel = (ServerLevel) this.level();
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
+                    this.getX(), this.getY(0.3D), this.getZ(),
+                    30, 0.3D, 0.6D, 0.3D, 0.5D);
+
         }
         return flag;
     }
@@ -156,20 +153,13 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         if (!this.level().isClientSide) {
             ServerLevel serverLevel = (ServerLevel) this.level();
 
-            // 1. Большая вспышка (1 шт, без разброса)
-            serverLevel.sendParticles(Dristmechanic.FLASH_BIG.get(),
-                    this.getX(), this.getY(0.5D), this.getZ(),
-                    1, 0, 0, 0, 0);
-
-            // 2. Мелкие частицы облака (разлетаются в стороны)
             serverLevel.sendParticles(Dristmechanic.FLASH_SMALL.get(),
                     this.getX(), this.getY(0.5D), this.getZ(),
-            15, 0.3D, 0.3D, 0.3D, 0.03D);
+            20, 0.15D, 0.15D, 0.15D, 0.02D);
 
-            // 3. Винтики/болтики с гравитацией
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
-                    this.getX(), this.getY(0.5D), this.getZ(),
-                    20, 0.5D, 0.5D, 0.5D, 0.3D);
+                    this.getX(), this.getY(0.3D), this.getZ(),
+                    30, 0.3D, 0.6D, 0.3D, 0.5D);
 
             this.discard();
         }

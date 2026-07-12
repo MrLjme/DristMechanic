@@ -12,7 +12,7 @@ public class FlashBigParticle extends TextureSheetParticle {
     public FlashBigParticle(ClientLevel level, double x, double y, double z, double xd, double yd, double zd, SpriteSet spriteSet) {
         super(level, x, y, z, xd, yd, zd);
         this.pickSprite(spriteSet); // ОБЯЗАТЕЛЬНО: подхватываем текстуру из JSON
-        this.lifetime = 6;
+        this.lifetime = 8;
         this.gravity = 0;
         this.hasPhysics = false;
         this.scale(0.1F);
@@ -32,7 +32,7 @@ public class FlashBigParticle extends TextureSheetParticle {
         float progress = (this.age + partialTick) / (float) this.lifetime;
         // Треугольная волна: увеличение до 0.5, затем уменьшение
         float scale = progress < 0.5f ? progress * 2.0f : (1.0f - progress) * 2.0f;
-        return scale * 1.0F;
+        return scale * 1.5F;
     }
 
     @Override

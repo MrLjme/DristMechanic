@@ -11,32 +11,49 @@ import net.minecraft.resources.ResourceLocation;
 public class FlashSmallParticle extends TextureSheetParticle {
     public FlashSmallParticle(ClientLevel level, double x, double y, double z, double xd, double yd, double zd, SpriteSet spriteSet) {
         super(level, x, y, z, xd, yd, zd);
-        this.pickSprite(spriteSet); // ОБЯЗАТЕЛЬНО: подхватываем текстуру из JSON
-        this.lifetime = 6;
+        this.pickSprite(spriteSet);
+
+        // Чуть увеличили время жизни, чтобы облако успело отыграть анимацию
+        this.lifetime = 8 + this.random.nextInt(6);
         this.gravity = 0;
         this.hasPhysics = false;
         this.scale(0.1F);
-        this.pickSprite(spriteSet);
+        this.friction = 0.95F;
 
-        // ЗАЩИТА ОТ КРАША: Если текстура не найдена, используем ванильный фолбэк
+        // Гасим начальный импульс, чтобы они не улетали слишком далеко
+        this.xd *= 0.3F;
+        this.yd *= 0.3F;
+        this.zd *= 0.3F;
+
         if (this.sprite == null) {
             TextureAtlas atlas = Minecraft.getInstance().getModelManager().getAtlas(TextureAtlas.LOCATION_PARTICLES);
             this.setSprite(atlas.getSprite(ResourceLocation.withDefaultNamespace("generic_0")));
-            System.err.println("[DristMechanic] ОШИБКА РЕСУРСОВ: Текстура для частицы не найдена! Проверьте папки particles и textures/particle в resources.");
+            System.err.println("[DristMechanic] ОШИБКА РЕСУРСОВ: Текстура для частицы не найдена!");
         }
     }
 
-    // В 1.21.1 метод называется getQuadSize
     @Override
     public float getQuadSize(float partialTick) {
         float progress = (this.age + partialTick) / (float) this.lifetime;
         float scale = progress < 0.5f ? progress * 2.0f : (1.0f - progress) * 2.0f;
-        return scale * 0.8F; // Максимальный размер мелких частиц
+        return scale * 0.8F;
     }
 
     @Override
     public void tick() {
         super.tick();
+
+        // ЭФФЕКТ ОБЛАКА: Добавляем легкую турбулентность (частицы "кипят" внутри)
+        float turbulence = 0.03F;
+        this.xd += (this.random.nextFloat() - 0.5F) * turbulence;
+        this.yd += (this.random.nextFloat() - 0.5F) * turbulence;
+        this.zd += (this.random.nextFloat() - 0.5F) * turbulence;
+
+        // Сильно замедляем, чтобы они оставались кучными внутри и не разлетались
+        this.xd *= 0.85F;
+        this.yd *= 0.85F;
+        this.zd *= 0.85F;
+
         float progress = (this.age) / (float) this.lifetime;
         this.alpha = progress < 0.5f ? progress * 2.0f : (1.0f - progress) * 2.0f;
     }
