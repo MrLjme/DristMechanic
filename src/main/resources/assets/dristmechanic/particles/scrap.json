@@ -1,0 +1,9 @@
+{
+  "textures": [ 
+    "dristmechanic:scrap_bolt",
+    "dristmechanic:scrap_screw", 
+    "dristmechanic:scrap_gear",
+    "dristmechanic:scrap_nut",
+    "dristmechanic:scrap_wire"
+  ]
+}
