@@ -92,23 +92,19 @@ public class Dristmechanic {
         // РЕГИСТРАЦИЯ ПРОВАЙДЕРОВ ЧАСТИЦ НА КЛИЕНТЕ
         @SubscribeEvent
         public static void registerParticles(RegisterParticleProvidersEvent event) {
-            // Большая вспышка
+            // Большая вспышка (обычные спрайты)
             event.registerSpriteSet(Dristmechanic.FLASH_BIG.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
                             new FlashBigParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
             );
 
-            // Мелкие частицы вспышки
+            // Мелкие частицы вспышки (обычные спрайты)
             event.registerSpriteSet(Dristmechanic.FLASH_SMALL.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
                             new FlashSmallParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
             );
 
-            // Скрап (винтики/болтики)
-            event.registerSpriteSet(Dristmechanic.SCRAP.get(), spriteSet ->
-                    (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
-                            new ScrapParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
-            );
+            event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
         }
     }
 }
