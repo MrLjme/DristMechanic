@@ -140,7 +140,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
             ServerLevel serverLevel = (ServerLevel) this.level();
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
                     this.getX(), this.getY(0.3D), this.getZ(),
-                    30, 0.3D, 0.6D, 0.3D, 0.5D);
+                    15, 0.3D, 0.6D, 0.3D, 0.1D);
 
         }
         return flag;
@@ -159,7 +159,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
 
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
                     this.getX(), this.getY(0.3D), this.getZ(),
-                    30, 0.3D, 0.6D, 0.3D, 0.5D);
+                    30, 0.3D, 0.6D, 0.3D, 0.1D);
 
             this.discard();
         }
