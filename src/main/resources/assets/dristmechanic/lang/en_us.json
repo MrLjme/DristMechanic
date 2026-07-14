@@ -1,7 +1,5 @@
 {
   "itemGroup.dristmechanic": "DristMechanic",
-  "block.dristmechanic.example_block": "Example Block",
-  "item.dristmechanic.example_item": "Example Item",
   "item.dristmechanic.totebot_spawn_egg": "Totebot Spawn Egg",
   "entity.dristmechanic.totebot": "Totebot"
 }

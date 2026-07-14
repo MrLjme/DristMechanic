@@ -1,7 +1,5 @@
 {
   "itemGroup.dristmechanic": "DristMechanic",
-  "block.dristmechanic.example_block": "Пример блока",
-  "item.dristmechanic.example_item": "Пример предмета",
   "item.dristmechanic.totebot_spawn_egg": "Яйцо призыва грузобота",
   "entity.dristmechanic.totebot": "Грузобот"
 }

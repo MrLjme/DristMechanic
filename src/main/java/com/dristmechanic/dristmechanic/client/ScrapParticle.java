@@ -1,9 +1,7 @@
 package com.dristmechanic.dristmechanic.client;
 
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.math.Axis;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -13,15 +11,12 @@ import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -37,10 +32,6 @@ import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoRenderer;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
-import java.util.EnumMap;
-import java.util.Map;
-
-@SuppressWarnings("SpellCheckingInspection")
 public class ScrapParticle extends Particle {
 
     public enum ScrapType {
@@ -51,12 +42,34 @@ public class ScrapParticle extends Particle {
         ScrapType(String name) { this.name = name; }
     }
 
+    // ==================== ФИЗИКА (ванильные значения) ====================
+    private static final double GRAVITY         = 0.04D;   // ванильная гравитация
+    private static final double AIR_DRAG        = 0.98D;   // ванильный drag
+    private static final double GROUND_FRICTION = 0.70D;   // ванильное трение XZ на земле
+    private static final double RESTITUTION     = 0.40D;   // упругость отскока от пола
+    private static final double MIN_BOUNCE_VEL  = 0.08D;   // мин. скорость для отскока
+    private static final double WALL_BOUNCE     = 0.30D;   // потеря энергии при ударе о стену/потолок
+    private static final double ROLL_AIR_DRAG   = 0.92D;
+    private static final double ROLL_GROUND_DRAG= 0.70D;
+    private static final double STOP_THRESHOLD  = 0.001D;
+
+    // ==================== РЕНДЕРИНГ ====================
+    private static final ScrapAnimatable SHARED_ANIMATABLE = new ScrapAnimatable();
+    private static final ResourceLocation TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("dristmechanic", "textures/particle/scrap.png");
+    private static final RenderType RENDER_TYPE = RenderType.entityCutoutNoCull(TEXTURE);
+    private static final ScrapData[] DATA = new ScrapData[ScrapType.values().length];
+
+    static {
+        for (ScrapType type : ScrapType.values()) {
+            DATA[type.ordinal()] = new ScrapData(type);
+        }
+    }
+
     public static class ScrapAnimatable implements GeoAnimatable {
         private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-
         @Override public double getTick(Object object) { return 0; }
         @Override public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }
-
         @Override
         public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
             controllers.add(new AnimationController<>(this, "main", 0, state -> PlayState.STOP));
@@ -64,289 +77,259 @@ public class ScrapParticle extends Particle {
     }
 
     public static class ScrapGeoModel extends GeoModel<ScrapAnimatable> {
-        private static final ResourceLocation TEXTURE =
-                ResourceLocation.fromNamespaceAndPath("dristmechanic", "textures/particle/scrap.png");
-        private final ScrapType type;
-
-        public ScrapGeoModel(ScrapType type) { this.type = type; }
-
-        @Override public ResourceLocation getModelResource(ScrapAnimatable animatable) {
-            return ResourceLocation.fromNamespaceAndPath("dristmechanic", "geo/" + type.name + ".geo.json");
+        private final ResourceLocation modelLoc;
+        public ScrapGeoModel(ScrapType type) {
+            this.modelLoc = ResourceLocation.fromNamespaceAndPath("dristmechanic", "geo/" + type.name + ".geo.json");
         }
-        @Override public ResourceLocation getTextureResource(ScrapAnimatable animatable) { return TEXTURE; }
-        @Override public ResourceLocation getAnimationResource(ScrapAnimatable animatable) { return null; }
+        @Override public ResourceLocation getModelResource(ScrapAnimatable a) { return modelLoc; }
+        @Override public ResourceLocation getTextureResource(ScrapAnimatable a) { return TEXTURE; }
+        @Override public ResourceLocation getAnimationResource(ScrapAnimatable a) { return null; }
     }
 
     public static class ScrapRenderer implements GeoRenderer<ScrapAnimatable> {
         private final ScrapGeoModel model;
-        private final ScrapAnimatable animatable;
-        private BakedGeoModel bakedModel;
-        private RenderType renderType;
-
-        public ScrapRenderer(ScrapGeoModel model, ScrapAnimatable animatable) {
-            this.model = model;
-            this.animatable = animatable;
-        }
-
+        private BakedGeoModel baked;
+        public ScrapRenderer(ScrapGeoModel model) { this.model = model; }
         public BakedGeoModel getBaked() {
-            if (this.bakedModel == null) {
-                this.bakedModel = this.model.getBakedModel(this.model.getModelResource(this.animatable));
+            if (this.baked == null) {
+                this.baked = this.model.getBakedModel(this.model.getModelResource(SHARED_ANIMATABLE));
             }
-            return this.bakedModel;
+            return this.baked;
         }
-
-        public RenderType getRenderType() {
-            if (this.renderType == null) {
-                ResourceLocation texture = this.model.getTextureResource(this.animatable);
-
-                RenderType.CompositeState state = RenderType.CompositeState.builder()
-                        .setShaderState(RenderStateShard.RENDERTYPE_ENTITY_CUTOUT_SHADER)
-                        .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
-                        .setTransparencyState(RenderStateShard.NO_TRANSPARENCY)
-                        .setCullState(RenderStateShard.NO_CULL)
-                        .setLightmapState(RenderStateShard.LIGHTMAP)
-                        .setOverlayState(RenderStateShard.OVERLAY)
-                        .createCompositeState(false);
-
-                this.renderType = RenderType.create(
-                        "scrap_particle_cutout",
-                        DefaultVertexFormat.NEW_ENTITY,
-                        VertexFormat.Mode.QUADS,
-                        256,
-                        false,
-                        false,
-                        state
-                );
-            }
-            return this.renderType;
+        public void render(PoseStack poseStack, MultiBufferSource buffers, float partialTicks, int light) {
+            BakedGeoModel model = getBaked();
+            if (model == null) return;
+            VertexConsumer buffer = buffers.getBuffer(RENDER_TYPE);
+            actuallyRender(poseStack, SHARED_ANIMATABLE, model, RENDER_TYPE, buffers, buffer,
+                    false, partialTicks, light, OverlayTexture.NO_OVERLAY, -1);
         }
-
         @Override @NotNull public GeoModel<ScrapAnimatable> getGeoModel() { return model; }
-        @Override @NotNull public ScrapAnimatable getAnimatable() { return animatable; }
-        public void updateAnimatedTextureFrame(ScrapAnimatable animatable) { }
-        @Override public void fireCompileRenderLayersEvent() { }
-        @Override public boolean firePreRenderEvent(PoseStack poseStack, BakedGeoModel bakedModel, MultiBufferSource bufferSource, float partialTick, int packedLight) { return false; }
-        @Override public void firePostRenderEvent(PoseStack poseStack, BakedGeoModel bakedModel, MultiBufferSource bufferSource, float partialTick, int packedLight) { }
+        @Override @NotNull public ScrapAnimatable getAnimatable() { return SHARED_ANIMATABLE; }
+        @Override public void updateAnimatedTextureFrame(ScrapAnimatable a) {}
+        @Override public void fireCompileRenderLayersEvent() {}
+        @Override public boolean firePreRenderEvent(PoseStack ps, BakedGeoModel m, MultiBufferSource b, float pt, int l) { return false; }
+        @Override public void firePostRenderEvent(PoseStack ps, BakedGeoModel m, MultiBufferSource b, float pt, int l) {}
+    }
 
-        public void renderModel(PoseStack poseStack, BakedGeoModel model, RenderType renderType, MultiBufferSource bufferSource, float partialTicks, int light) {
-            VertexConsumer buffer = bufferSource.getBuffer(renderType);
-            actuallyRender(poseStack, this.animatable, model, renderType, bufferSource, buffer, false, partialTicks, light, OverlayTexture.NO_OVERLAY, -1);
+    private static class ScrapData {
+        final ScrapGeoModel model;
+        final ScrapRenderer renderer;
+        ScrapData(ScrapType type) {
+            this.model = new ScrapGeoModel(type);
+            this.renderer = new ScrapRenderer(model);
         }
     }
 
-    private static final Map<ScrapType, ScrapGeoModel> MODELS = new EnumMap<>(ScrapType.class);
-    private static final Map<ScrapType, ScrapAnimatable> ANIMATABLES = new EnumMap<>(ScrapType.class);
-    private static final Map<ScrapType, ScrapRenderer> RENDERERS = new EnumMap<>(ScrapType.class);
-
-    static {
-        for (ScrapType type : ScrapType.values()) {
-            ScrapGeoModel model = new ScrapGeoModel(type);
-            ScrapAnimatable anim = new ScrapAnimatable();
-            MODELS.put(type, model);
-            ANIMATABLES.put(type, anim);
-            RENDERERS.put(type, new ScrapRenderer(model, anim));
-        }
-    }
-
+    // ==================== INSTANCE ====================
     private final ScrapType type;
     private final float initialPitch;
     private final float initialYaw;
-    private boolean cachedVisibility = true;
-    private int visibilityCheckCounter = 0;
+    private double rollSpeed = 0.0D;
+    private boolean visible = true;
+    private int visibilityTick;
 
     public ScrapParticle(ClientLevel level, double x, double y, double z,
                          double xSpeed, double ySpeed, double zSpeed, ScrapType type) {
         super(level, x, y, z, xSpeed, ySpeed, zSpeed);
         this.xd = xSpeed; this.yd = ySpeed; this.zd = zSpeed;
-        this.gravity = 1.0F;
         this.lifetime = 100 + level.random.nextInt(40);
         this.type = type;
         this.initialPitch = level.random.nextFloat() * Mth.TWO_PI;
         this.initialYaw = level.random.nextFloat() * Mth.TWO_PI;
-
-        // УВЕЛИЧИВАЕМ ХИТБОКС для предотвращения проваливания сквозь землю
-        // Дефолтный размер 0.2f слишком мал для быстрого падения
         this.setSize(0.2F, 0.8F);
+        this.hasPhysics = true;
     }
 
     @Override @NotNull public ParticleRenderType getRenderType() {
         return ParticleRenderType.CUSTOM;
     }
 
+    // ==================== ЛЕГКОВЕСНАЯ КОЛЛИЗИЯ ====================
+    /**
+     * Проверяет только нужные точки вместо Entity.collideBoundingBox.
+     * Стены/потолок работают, onGround выставляется ТОЛЬКО от пола.
+     */
+    @Override
+    public void move(double x, double y, double z) {
+        if (!this.hasPhysics) {
+            this.setBoundingBox(this.getBoundingBox().move(x, y, z));
+            this.setLocationFromBoundingbox();
+            return;
+        }
+
+        double hw = this.bbWidth / 2.0;
+
+        // --- X axis (стены) ---
+        if (x != 0.0) {
+            double edgeX = this.x + x + hw * Math.signum(x);
+            if (isSolid(edgeX, this.y + 0.1, this.z) || isSolid(edgeX, this.y + this.bbHeight - 0.1, this.z)) {
+                this.xd = -this.xd * WALL_BOUNCE;
+                x = 0.0;
+            } else {
+                this.x += x;
+            }
+        }
+
+        // --- Y axis (пол + потолок) ---
+        if (y != 0.0) {
+            if (y < 0.0) {
+                // Падение — проверяем пол (5 точек по нижней грани хитбокса)
+                double nextY = this.y + y;
+                if (isSolid(this.x, nextY, this.z) ||
+                        isSolid(this.x + hw, nextY, this.z) ||
+                        isSolid(this.x - hw, nextY, this.z) ||
+                        isSolid(this.x, nextY, this.z + hw) ||
+                        isSolid(this.x, nextY, this.z - hw)) {
+                    // Приземление: ставим ровно на поверхность блока
+                    this.y = Math.floor(nextY) + 1.0;
+                    this.onGround = true;
+                    y = 0.0;
+                } else {
+                    this.y = nextY;
+                    this.onGround = false;
+                }
+            } else {
+                // Взлёт — проверяем потолок
+                double topY = this.y + y + this.bbHeight;
+                if (isSolid(this.x, topY, this.z)) {
+                    this.yd = -this.yd * WALL_BOUNCE;
+                    y = 0.0;
+                } else {
+                    this.y += y;
+                    this.onGround = false;
+                }
+            }
+        }
+
+        // --- Z axis (стены) ---
+        if (z != 0.0) {
+            double edgeZ = this.z + z + hw * Math.signum(z);
+            if (isSolid(this.x, this.y + 0.1, edgeZ) || isSolid(this.x, this.y + this.bbHeight - 0.1, edgeZ)) {
+                this.zd = -this.zd * WALL_BOUNCE;
+                z = 0.0;
+            } else {
+                this.z += z;
+            }
+        }
+
+        // Синхронизируем хитбокс
+        this.setBoundingBox(new AABB(
+                this.x - hw, this.y, this.z - hw,
+                this.x + hw, this.y + this.bbHeight, this.z + hw
+        ));
+    }
+
+    private boolean isSolid(double x, double y, double z) {
+        return this.level.getBlockState(BlockPos.containing(x, y, z)).blocksMotion();
+    }
+
+    // ==================== ФИЗИКА ====================
     @Override
     public void tick() {
         this.xo = this.x; this.yo = this.y; this.zo = this.z;
-        if (this.age++ >= this.lifetime) { this.remove(); return; }
-
-        this.yd -= 0.04D * this.gravity;
-        this.move(this.xd, this.yd, this.zd);
-        this.xd *= 0.98D; this.yd *= 0.98D; this.zd *= 0.98D;
-        this.oRoll = this.roll;
-
-        if (this.onGround) {
-            if (this.yd < -0.1D) {
-                this.yd *= -0.2D;
-                this.onGround = false;
-            } else {
-                this.xd = 0;
-                this.zd = 0;
-            }
-        } else {
-            double speed = Math.sqrt(this.xd * this.xd + this.zd * this.zd);
-            this.roll += (float)(speed * 8.0D);
+        if (this.age++ >= this.lifetime) {
+            this.remove();
+            return;
         }
 
-        if (++visibilityCheckCounter >= 5) {
-            visibilityCheckCounter = 0;
+        // Ванильный порядок: гравитация → движение → drag
+        this.yd -= GRAVITY;
+        this.move(this.xd, this.yd, this.zd);
+
+        // Обработка земли / отскока
+        if (this.onGround) {
+            if (this.yd < -MIN_BOUNCE_VEL) {
+                // Упругий отскок
+                this.yd *= -RESTITUTION;
+                this.xd *= 0.6D;
+                this.zd *= 0.6D;
+                this.rollSpeed *= 0.3D;
+                this.onGround = false;
+            } else {
+                // Упокоилось
+                this.yd = 0.0D;
+                this.xd *= GROUND_FRICTION;
+                this.zd *= GROUND_FRICTION;
+                this.rollSpeed *= ROLL_GROUND_DRAG;
+                stopIfMicro();
+            }
+        } else {
+            // Воздух: drag
+            this.xd *= AIR_DRAG;
+            this.yd *= AIR_DRAG;
+            this.zd *= AIR_DRAG;
+
+            double hSpeed = Math.sqrt(this.xd * this.xd + this.zd * this.zd);
+            this.rollSpeed = hSpeed * 6.0D;
+            this.rollSpeed *= ROLL_AIR_DRAG;
+        }
+
+        // Вращение
+        this.oRoll = this.roll;
+        this.roll += (float) this.rollSpeed;
+
+        // Видимость
+        if (++visibilityTick >= 5) {
+            visibilityTick = 0;
             updateVisibility();
         }
     }
 
-    private void updateVisibility() {
-        if (this.level == null) {
-            cachedVisibility = true;
-            return;
-        }
-
-        Minecraft mc = Minecraft.getInstance();
-
-        if (mc.levelRenderer != null) {
-            Frustum frustum = mc.levelRenderer.getFrustum();
-            if (frustum != null) {
-                AABB aabb = new AABB(this.x - 0.5, this.y - 0.5, this.z - 0.5,
-                        this.x + 0.5, this.y + 0.5, this.z + 0.5);
-                if (!frustum.isVisible(aabb)) {
-                    cachedVisibility = false;
-                    return;
-                }
-            }
-        }
-
-        Entity camera = mc.getCameraEntity();
-        if (camera != null) {
-            Vec3 cameraPos = camera.getEyePosition();
-            Vec3 particlePos = new Vec3(this.x, this.y, this.z);
-            double distanceSq = cameraPos.distanceToSqr(particlePos);
-
-            if (distanceSq > 16.0 && distanceSq < 1024.0) {
-                if (isOccluded(cameraPos, particlePos)) {
-                    cachedVisibility = false;
-                    return;
-                }
-            }
-        }
-
-        cachedVisibility = true;
+    private void stopIfMicro() {
+        if (Math.abs(this.xd) < STOP_THRESHOLD) this.xd = 0.0D;
+        if (Math.abs(this.zd) < STOP_THRESHOLD) this.zd = 0.0D;
+        if (Math.abs(this.rollSpeed) < STOP_THRESHOLD) this.rollSpeed = 0.0D;
     }
 
-    private boolean isOccluded(Vec3 from, Vec3 to) {
-        double distance = from.distanceTo(to);
-        if (distance < 1.0) return false;
-
-        int steps = (int)distance;
-        if (steps < 2) return false;
-
-        double stepX = (to.x - from.x) / steps;
-        double stepY = (to.y - from.y) / steps;
-        double stepZ = (to.z - from.z) / steps;
-
-        double x = from.x;
-        double y = from.y;
-        double z = from.z;
-
-        for (int i = 0; i < steps - 1; i++) {
-            x += stepX;
-            y += stepY;
-            z += stepZ;
-
-            BlockPos blockPos = BlockPos.containing(x, y, z);
-            BlockState state = this.level.getBlockState(blockPos);
-
-            if (state.getLightBlock(this.level, blockPos) > 0) {
-                return true;
-            }
+    // ==================== ВИДИМОСТЬ ====================
+    private void updateVisibility() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.levelRenderer == null || mc.levelRenderer.getFrustum() == null) {
+            this.visible = true;
+            return;
         }
-
-        return false;
+        if (!mc.levelRenderer.getFrustum().isVisible(getBoundingBox().inflate(0.5))) {
+            this.visible = false;
+            return;
+        }
+        Vec3 camPos = mc.gameRenderer.getMainCamera().getPosition();
+        if (camPos.distanceToSqr(this.x, this.y, this.z) > 1024.0) {
+            this.visible = false;
+            return;
+        }
+        this.visible = true;
     }
 
     @Override
     protected int getLightColor(float partialTick) {
-        BlockPos blockPos = BlockPos.containing(this.x, this.y, this.z);
-        return LevelRenderer.getLightColor(this.level, blockPos);
+        return LevelRenderer.getLightColor(this.level, BlockPos.containing(this.x, this.y, this.z));
     }
 
+    // ==================== РЕНДЕРИНГ ====================
     public void renderCustom(PoseStack poseStack, MultiBufferSource bufferSource, Camera camera, float partialTicks) {
-        if (!cachedVisibility) return;
+        if (!visible) return;
+        applyPose(poseStack, camera, partialTicks);
+        DATA[type.ordinal()].renderer.render(poseStack, bufferSource, partialTicks, getLightColor(partialTicks));
+        poseStack.popPose();
+    }
 
+    @Override
+    public void render(@NotNull VertexConsumer buffer, @NotNull Camera camera, float partialTicks) {
+        if (!visible) return;
+        PoseStack poseStack = new PoseStack();
+        renderCustom(poseStack, Minecraft.getInstance().renderBuffers().bufferSource(), camera, partialTicks);
+    }
+
+    private void applyPose(PoseStack poseStack, Camera camera, float partialTicks) {
         double x = Mth.lerp(partialTicks, this.xo, this.x) - camera.getPosition().x();
         double y = Mth.lerp(partialTicks, this.yo, this.y) - camera.getPosition().y();
         double z = Mth.lerp(partialTicks, this.zo, this.z) - camera.getPosition().z();
 
         poseStack.pushPose();
         poseStack.translate(x, y, z);
-        poseStack.mulPose(Axis.XP.rotation(this.initialPitch));
-        poseStack.mulPose(Axis.YP.rotation(this.initialYaw));
+        poseStack.mulPose(Axis.XP.rotation(initialPitch));
+        poseStack.mulPose(Axis.YP.rotation(initialYaw));
         poseStack.mulPose(Axis.ZP.rotation(Mth.lerp(partialTicks, this.oRoll, this.roll)));
-        poseStack.scale(1.0F, 1.0F, 1.0F);
-
-        ScrapRenderer renderer = RENDERERS.get(this.type);
-        BakedGeoModel bakedModel = renderer.getBaked();
-
-        if (bakedModel == null) {
-            poseStack.popPose();
-            return;
-        }
-
-        int light = getLightColor(partialTicks);
-        RenderType renderType = renderer.getRenderType();
-
-        MultiBufferSource.BufferSource globalBuffer = Minecraft.getInstance().renderBuffers().bufferSource();
-        renderer.renderModel(poseStack, bakedModel, renderType, globalBuffer, partialTicks, light);
-
-        poseStack.popPose();
-        globalBuffer.endBatch(renderType);
-    }
-
-    @Override
-    public void render(@NotNull VertexConsumer buffer, @NotNull Camera camera, float partialTicks) {
-        if (!cachedVisibility) return;
-
-        MultiBufferSource.BufferSource globalBuffer = Minecraft.getInstance().renderBuffers().bufferSource();
-
-        double x = Mth.lerp(partialTicks, this.xo, this.x) - camera.getPosition().x();
-        double y = Mth.lerp(partialTicks, this.yo, this.y) - camera.getPosition().y();
-        double z = Mth.lerp(partialTicks, this.zo, this.z) - camera.getPosition().z();
-
-        PoseStack pose = new PoseStack();
-        pose.pushPose();
-        pose.translate(x, y, z);
-        pose.mulPose(Axis.XP.rotation(this.initialPitch));
-        pose.mulPose(Axis.YP.rotation(this.initialYaw));
-        pose.mulPose(Axis.ZP.rotation(Mth.lerp(partialTicks, this.oRoll, this.roll)));
-        pose.scale(1.0F, 1.0F, 1.0F);
-
-        ScrapRenderer renderer = RENDERERS.get(this.type);
-        BakedGeoModel bakedModel = renderer.getBaked();
-
-        if (bakedModel == null) {
-            pose.popPose();
-            return;
-        }
-
-        int light = getLightColor(partialTicks);
-        RenderType renderType = renderer.getRenderType();
-
-        VertexConsumer vertexConsumer = globalBuffer.getBuffer(renderType);
-
-        renderer.actuallyRender(
-                pose, ANIMATABLES.get(this.type), bakedModel, renderType,
-                globalBuffer, vertexConsumer, false, partialTicks, light,
-                OverlayTexture.NO_OVERLAY, -1
-        );
-
-        pose.popPose();
-        globalBuffer.endBatch(renderType);
     }
 
     public static class Factory implements ParticleProvider<SimpleParticleType> {
@@ -355,8 +338,8 @@ public class ScrapParticle extends Particle {
                                        double x, double y, double z,
                                        double xSpeed, double ySpeed, double zSpeed) {
             ScrapType[] types = ScrapType.values();
-            ScrapType randomType = types[level.getRandom().nextInt(types.length)];
-            return new ScrapParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, randomType);
+            return new ScrapParticle(level, x, y, z, xSpeed, ySpeed, zSpeed,
+                    types[level.getRandom().nextInt(types.length)]);
         }
     }
 }
