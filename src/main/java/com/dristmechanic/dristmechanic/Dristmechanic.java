@@ -1,7 +1,7 @@
 package com.dristmechanic.dristmechanic;
 
 import com.dristmechanic.dristmechanic.client.FlashBigParticle;
-import com.dristmechanic.dristmechanic.client.FlashSmallParticle;
+import com.dristmechanic.dristmechanic.client.FlashParticle;
 import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
@@ -40,7 +40,7 @@ public class Dristmechanic {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<ParticleType<?>> PARTICLES = DeferredRegister.create(BuiltInRegistries.PARTICLE_TYPE, MODID);
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_BIG = PARTICLES.register("flash_big", () -> new SimpleParticleType(false));
-    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_SMALL = PARTICLES.register("flash_small", () -> new SimpleParticleType(false));
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH = PARTICLES.register("flash", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
             properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x4A4A4A, 0xFF6600, properties));
@@ -99,9 +99,9 @@ public class Dristmechanic {
             );
 
             // Мелкие частицы вспышки (обычные спрайты)
-            event.registerSpriteSet(Dristmechanic.FLASH_SMALL.get(), spriteSet ->
+            event.registerSpriteSet(Dristmechanic.FLASH.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
-                            new FlashSmallParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
+                            new FlashParticle(level, x, y, z, xSpeed, ySpeed, zSpeed)
             );
 
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
