@@ -155,11 +155,11 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
 
             serverLevel.sendParticles(Dristmechanic.FLASH.get(),
                     this.getX(), this.getY(0.5D), this.getZ(),
-            20, 0.15D, 0.15D, 0.15D, 0.02D);
+            100, 0.0D, 0.0D, 0.0D, 0.15D);
 
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
                     this.getX(), this.getY(0.3D), this.getZ(),
-                    15, 0.1D, 0.5D, 0.1D, 0.15D);
+                    5, 0.0D, 0.0D, 0.0D, 0.15D);
 
             this.discard();
         }

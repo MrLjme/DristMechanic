@@ -23,9 +23,8 @@ import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class FlashParticle extends Particle {
+public class StaticFlashParticle extends Particle {
 
-    private static final double AIR_DRAG = 0.92D;
     private static final float BASE_WIDTH = 0.3F;
     private static final float BASE_LENGTH = 0.4F;
 
@@ -36,16 +35,15 @@ public class FlashParticle extends Particle {
     private static final float TINT_G = 0.45F;
     private static final float TINT_B = 1.00F;
 
-    // Обе фазы теперь занимают одинаковое время и используют одинаковую механику
     private static final float FADE_IN_TICKS = 2.0F;
     private static final float FADE_OUT_TICKS = 2.0F;
     private static final int FULL_BRIGHT = 0xF000F0;
 
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(
-            "dristmechanic", "textures/particle/flash.png");
+            "dristmechanic", "textures/particle/flash_static.png");
 
     private static final RenderType RENDER_TYPE = RenderType.create(
-            "flash_particle",
+            "static_flash_particle",
             DefaultVertexFormat.NEW_ENTITY,
             VertexFormat.Mode.QUADS,
             256,
@@ -55,7 +53,7 @@ public class FlashParticle extends Particle {
                     .setShaderState(new RenderStateShard.ShaderStateShard(
                             GameRenderer::getRendertypeEntityTranslucentEmissiveShader))
                     .setTextureState(new RenderStateShard.TextureStateShard(TEXTURE, false, false))
-                    .setTransparencyState(new RenderStateShard.TransparencyStateShard("flash_additive",
+                    .setTransparencyState(new RenderStateShard.TransparencyStateShard("static_flash_additive",
                             () -> {
                                 RenderSystem.enableBlend();
                                 RenderSystem.blendFunc(
@@ -76,16 +74,16 @@ public class FlashParticle extends Particle {
 
     private final float initialSpeed;
 
-    public FlashParticle(ClientLevel level, double x, double y, double z,
-                         double xSpeed, double ySpeed, double zSpeed) {
-        super(level, x, y, z, xSpeed, ySpeed, zSpeed);
-        this.xd = xSpeed;
-        this.yd = ySpeed;
-        this.zd = zSpeed;
-        this.lifetime = 5;
+    public StaticFlashParticle(ClientLevel level, double x, double y, double z) {
+        super(level, x, y, z, 0.0, 0.0, 0.0);
+        this.xd = 0.0;
+        this.yd = 0.0;
+        this.zd = 0.0;
+        this.lifetime = 5; // Время жизни оставлено прежним
         this.setSize(BASE_WIDTH, BASE_WIDTH);
         this.hasPhysics = false;
-        this.initialSpeed = (float) Math.sqrt(xSpeed * xSpeed + ySpeed * ySpeed + zSpeed * zSpeed);
+        // Задаем базовый множитель масштаба, чтобы частица была видна без скорости разлета
+        this.initialSpeed = 1.0F;
     }
 
     @Override
@@ -105,11 +103,10 @@ public class FlashParticle extends Particle {
             return;
         }
 
-        this.xd *= AIR_DRAG;
-        this.yd *= AIR_DRAG;
-        this.zd *= AIR_DRAG;
-
-        this.move(this.xd, this.yd, this.zd);
+        // Полностью убираем движение и сопротивление воздуха
+        this.xd = 0.0;
+        this.yd = 0.0;
+        this.zd = 0.0;
     }
 
     @Override
@@ -125,12 +122,11 @@ public class FlashParticle extends Particle {
         double py = Mth.lerp(partialTicks, this.yo, this.y) - camera.getPosition().y();
         double pz = Mth.lerp(partialTicks, this.zo, this.z) - camera.getPosition().z();
 
-        double speed = Math.sqrt(this.xd * this.xd + this.yd * this.yd + this.zd * this.zd);
-        if (speed < 0.001D) speed = 0.001D;
-
-        double nx = this.xd / speed;
-        double ny = this.yd / speed;
-        double nz = this.zd / speed;
+        // ЖЕСТКО ЗАДАЕМ НАПРАВЛЕНИЕ "ВВЕРХ" ДЛЯ СТОЯЧЕЙ ЧАСТИЦЫ
+        // Это позволяет математике ниже корректно построить вертикальный квад, повернутый к камере
+        double nx = 0.0;
+        double ny = 1.0;
+        double nz = 0.0;
 
         double vx = -px;
         double vy = -py;
@@ -147,16 +143,16 @@ public class FlashParticle extends Particle {
         float absDot = (float) Math.abs(dot);
         float perpFade = 1.0F - Mth.clamp(
                 (absDot - PERP_START) / (PERP_END - PERP_START), 0.0F, 1.0F);
+
+        // Если смотреть строго сверху или снизу, вертикальная линия вырождается, поэтому скрываем её
         if (perpFade <= 0.0F) {
             return;
         }
 
         float t = this.age + partialTicks;
 
-        // Появление: плавное нарастание за 2 тика
         float fadeIn = smoothstep(t / FADE_IN_TICKS);
 
-        // Угасание: начинается за 2 тика до конца жизни, использует ту же smoothstep функцию
         float fadeOutStart = this.lifetime - FADE_OUT_TICKS;
         float fadeOut = 1.0F;
         if (t > fadeOutStart) {
@@ -184,13 +180,8 @@ public class FlashParticle extends Particle {
         double flen = Math.sqrt(fx * fx + fy * fy + fz * fz);
 
         if (flen < 0.001D) {
-            if (Math.abs(ny) > 0.99D) {
-                fx = 1.0D; fy = 0.0D; fz = 0.0D;
-            } else {
-                fx = -nz; fy = 0.0D; fz = nx;
-                double len = Math.sqrt(fx * fx + fz * fz);
-                fx /= len; fz /= len;
-            }
+            // Если камера смотрит строго сверху/снизу, задаем дефолтное горизонтальное направление
+            fx = 1.0D; fy = 0.0D; fz = 0.0D;
         } else {
             fx /= flen;
             fy /= flen;
@@ -272,7 +263,8 @@ public class FlashParticle extends Particle {
                                        @NotNull ClientLevel level,
                                        double x, double y, double z,
                                        double xS, double yS, double zS) {
-            return new FlashParticle(level, x, y, z, xS, yS, zS);
+            // Игнорируем переданную скорость (xS, yS, zS), чтобы частица гарантированно оставалась на месте
+            return new StaticFlashParticle(level, x, y, z);
         }
     }
 }

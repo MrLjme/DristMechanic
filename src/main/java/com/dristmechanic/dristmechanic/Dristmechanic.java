@@ -1,6 +1,6 @@
 package com.dristmechanic.dristmechanic;
 
-import com.dristmechanic.dristmechanic.client.FlashBigParticle;
+import com.dristmechanic.dristmechanic.client.StaticFlashParticle;
 import com.dristmechanic.dristmechanic.client.FlashParticle;
 import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
@@ -14,7 +14,6 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -39,7 +38,7 @@ public class Dristmechanic {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<ParticleType<?>> PARTICLES = DeferredRegister.create(BuiltInRegistries.PARTICLE_TYPE, MODID);
-    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_BIG = PARTICLES.register("flash_big", () -> new SimpleParticleType(false));
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_STATIC = PARTICLES.register("flash_static", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH = PARTICLES.register("flash", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
@@ -92,14 +91,12 @@ public class Dristmechanic {
         // РЕГИСТРАЦИЯ ПРОВАЙДЕРОВ ЧАСТИЦ НА КЛИЕНТЕ
         @SubscribeEvent
         public static void registerParticles(RegisterParticleProvidersEvent event) {
-            // Большая вспышка (обычные спрайты)
-            event.registerSpriteSet(Dristmechanic.FLASH_BIG.get(), spriteSet ->
+            event.registerSpriteSet(Dristmechanic.FLASH.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
-                            new FlashBigParticle(level, x, y, z, xSpeed, ySpeed, zSpeed, spriteSet)
+                            new FlashParticle(level, x, y, z, xSpeed, ySpeed, zSpeed)
             );
 
-            // Мелкие частицы вспышки (обычные спрайты)
-            event.registerSpriteSet(Dristmechanic.FLASH.get(), spriteSet ->
+            event.registerSpriteSet(Dristmechanic.FLASH_STATIC.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
                             new FlashParticle(level, x, y, z, xSpeed, ySpeed, zSpeed)
             );
