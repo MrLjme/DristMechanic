@@ -25,11 +25,10 @@ import org.jetbrains.annotations.Nullable;
 
 public class StaticFlashParticle extends Particle {
 
+    // Установил одинаковые значения для идеальной квадратной формы.
+    // Если визуально кажется иначе, проверьте саму картинку flash.png на наличие прозрачных полей.
     private static final float BASE_WIDTH = 0.3F;
-    private static final float BASE_LENGTH = 0.4F;
-
-    private static final float PERP_START = 0.25F;
-    private static final float PERP_END = 0.85F;
+    private static final float BASE_LENGTH = 0.3F;
 
     private static final float TINT_R = 0.15F;
     private static final float TINT_G = 0.45F;
@@ -72,18 +71,11 @@ public class StaticFlashParticle extends Particle {
                     .createCompositeState(false)
     );
 
-    private final float initialSpeed;
-
     public StaticFlashParticle(ClientLevel level, double x, double y, double z) {
         super(level, x, y, z, 0.0, 0.0, 0.0);
-        this.xd = 0.0;
-        this.yd = 0.0;
-        this.zd = 0.0;
-        this.lifetime = 5; // Время жизни оставлено прежним
-        this.setSize(BASE_WIDTH, BASE_WIDTH);
+        this.lifetime = 7;
+        this.setSize(BASE_WIDTH, BASE_LENGTH);
         this.hasPhysics = false;
-        // Задаем базовый множитель масштаба, чтобы частица была видна без скорости разлета
-        this.initialSpeed = 1.0F;
     }
 
     @Override
@@ -100,13 +92,7 @@ public class StaticFlashParticle extends Particle {
 
         if (this.age++ >= this.lifetime) {
             this.remove();
-            return;
         }
-
-        // Полностью убираем движение и сопротивление воздуха
-        this.xd = 0.0;
-        this.yd = 0.0;
-        this.zd = 0.0;
     }
 
     @Override
@@ -118,41 +104,17 @@ public class StaticFlashParticle extends Particle {
         PoseStack poseStack = new PoseStack();
         MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
 
-        double px = Mth.lerp(partialTicks, this.xo, this.x) - camera.getPosition().x();
-        double py = Mth.lerp(partialTicks, this.yo, this.y) - camera.getPosition().y();
-        double pz = Mth.lerp(partialTicks, this.zo, this.z) - camera.getPosition().z();
-
-        // ЖЕСТКО ЗАДАЕМ НАПРАВЛЕНИЕ "ВВЕРХ" ДЛЯ СТОЯЧЕЙ ЧАСТИЦЫ
-        // Это позволяет математике ниже корректно построить вертикальный квад, повернутый к камере
-        double nx = 0.0;
-        double ny = 1.0;
-        double nz = 0.0;
-
-        double vx = -px;
-        double vy = -py;
-        double vz = -pz;
-        double vlen = Math.sqrt(vx * vx + vy * vy + vz * vz);
-        if (vlen > 0.001D) {
-            vx /= vlen;
-            vy /= vlen;
-            vz /= vlen;
-        }
-
-        double dot = vx * nx + vy * ny + vz * nz;
-
-        float absDot = (float) Math.abs(dot);
-        float perpFade = 1.0F - Mth.clamp(
-                (absDot - PERP_START) / (PERP_END - PERP_START), 0.0F, 1.0F);
-
-        // Если смотреть строго сверху или снизу, вертикальная линия вырождается, поэтому скрываем её
-        if (perpFade <= 0.0F) {
-            return;
-        }
+        // Позиция частицы относительно камеры
+        float px = (float) (Mth.lerp(partialTicks, this.xo, this.x) - camera.getPosition().x());
+        float py = (float) (Mth.lerp(partialTicks, this.yo, this.y) - camera.getPosition().y());
+        float pz = (float) (Mth.lerp(partialTicks, this.zo, this.z) - camera.getPosition().z());
 
         float t = this.age + partialTicks;
 
+        // Плавное появление
         float fadeIn = smoothstep(t / FADE_IN_TICKS);
 
+        // Плавное исчезновение
         float fadeOutStart = this.lifetime - FADE_OUT_TICKS;
         float fadeOut = 1.0F;
         if (t > fadeOutStart) {
@@ -164,91 +126,56 @@ public class StaticFlashParticle extends Particle {
             return;
         }
 
-        float fade = lifeFade * perpFade;
-        float r = TINT_R * fade;
-        float g = TINT_G * fade;
-        float b = TINT_B * fade;
+        // Цвет теперь зависит только от времени жизни.
+        // (Искусственное затемнение perpFade убрано, так как частица всегда смотрит на камеру).
+        // Если цвет кажется слишком ярким/белым из-за аддитивного блендинга, уменьшите значения TINT_* выше.
+        float r = TINT_R * lifeFade;
+        float g = TINT_G * lifeFade;
+        float b = TINT_B * lifeFade;
         float a = 1.0F;
 
         float scale = fadeIn;
-        float w = BASE_WIDTH * (1.0F + this.initialSpeed) * scale;
-        float l = BASE_LENGTH * (1.0F + this.initialSpeed * 2.0F) * scale;
+        float w = BASE_WIDTH * scale;
+        float l = BASE_LENGTH * scale;
 
-        double fx = vx - nx * dot;
-        double fy = vy - ny * dot;
-        double fz = vz - nz * dot;
-        double flen = Math.sqrt(fx * fx + fy * fy + fz * fz);
-
-        if (flen < 0.001D) {
-            // Если камера смотрит строго сверху/снизу, задаем дефолтное горизонтальное направление
-            fx = 1.0D; fy = 0.0D; fz = 0.0D;
-        } else {
-            fx /= flen;
-            fy /= flen;
-            fz /= flen;
-        }
-
-        double rx = ny * fz - nz * fy;
-        double ry = nz * fx - nx * fz;
-        double rz = nx * fy - ny * fx;
-        double rlen = Math.sqrt(rx * rx + ry * ry + rz * rz);
-        if (rlen > 0.001D) {
-            rx /= rlen;
-            ry /= rlen;
-            rz /= rlen;
-        }
-
-        double ux = ry * nz - rz * ny;
-        double uy = rz * nx - rx * nz;
-        double uz = rx * ny - ry * nx;
-
-        float x0 = (float)(px + (-w) * rx + (-l) * nx);
-        float y0 = (float)(py + (-w) * ry + (-l) * ny);
-        float z0 = (float)(pz + (-w) * rz + (-l) * nz);
-
-        float x1 = (float)(px + (-w) * rx + l * nx);
-        float y1 = (float)(py + (-w) * ry + l * ny);
-        float z1 = (float)(pz + (-w) * rz + l * nz);
-
-        float x2 = (float)(px + w * rx + l * nx);
-        float y2 = (float)(py + w * ry + l * ny);
-        float z2 = (float)(pz + w * rz + l * nz);
-
-        float x3 = (float)(px + w * rx + (-l) * nx);
-        float y3 = (float)(py + w * ry + (-l) * ny);
-        float z3 = (float)(pz + w * rz + (-l) * nz);
-
-        float unx = (float) ux, uny = (float) uy, unz = (float) uz;
+        poseStack.pushPose();
+        // Перемещаемся в точку спавна частицы
+        poseStack.translate(px, py, pz);
+        // Поворачиваем квад строго на камеру по всем осям (стандартный 2D билборд Minecraft)
+        poseStack.mulPose(camera.rotation());
 
         VertexConsumer vc = bufferSource.getBuffer(RENDER_TYPE);
 
-        vc.addVertex(poseStack.last().pose(), x0, y0, z0)
+        // Рендерим идеальный квадрат в локальных координатах (после поворота камеры)
+        vc.addVertex(poseStack.last().pose(), -w, -l, 0.0F)
                 .setColor(r, g, b, a)
                 .setUv(0.0F, 1.0F)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(FULL_BRIGHT)
-                .setNormal(poseStack.last(), unx, uny, unz);
+                .setNormal(poseStack.last(), 0.0F, 0.0F, 1.0F);
 
-        vc.addVertex(poseStack.last().pose(), x1, y1, z1)
+        vc.addVertex(poseStack.last().pose(), -w, l, 0.0F)
                 .setColor(r, g, b, a)
                 .setUv(0.0F, 0.0F)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(FULL_BRIGHT)
-                .setNormal(poseStack.last(), unx, uny, unz);
+                .setNormal(poseStack.last(), 0.0F, 0.0F, 1.0F);
 
-        vc.addVertex(poseStack.last().pose(), x2, y2, z2)
+        vc.addVertex(poseStack.last().pose(), w, l, 0.0F)
                 .setColor(r, g, b, a)
                 .setUv(1.0F, 0.0F)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(FULL_BRIGHT)
-                .setNormal(poseStack.last(), unx, uny, unz);
+                .setNormal(poseStack.last(), 0.0F, 0.0F, 1.0F);
 
-        vc.addVertex(poseStack.last().pose(), x3, y3, z3)
+        vc.addVertex(poseStack.last().pose(), w, -l, 0.0F)
                 .setColor(r, g, b, a)
                 .setUv(1.0F, 1.0F)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(FULL_BRIGHT)
-                .setNormal(poseStack.last(), unx, uny, unz);
+                .setNormal(poseStack.last(), 0.0F, 0.0F, 1.0F);
+
+        poseStack.popPose();
     }
 
     private static float smoothstep(float x) {
@@ -263,7 +190,7 @@ public class StaticFlashParticle extends Particle {
                                        @NotNull ClientLevel level,
                                        double x, double y, double z,
                                        double xS, double yS, double zS) {
-            // Игнорируем переданную скорость (xS, yS, zS), чтобы частица гарантированно оставалась на месте
+            // Игнорируем переданную скорость, создаем строго стоячую частицу
             return new StaticFlashParticle(level, x, y, z);
         }
     }

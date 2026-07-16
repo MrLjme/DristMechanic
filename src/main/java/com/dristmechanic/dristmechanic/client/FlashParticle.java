@@ -82,7 +82,7 @@ public class FlashParticle extends Particle {
         this.xd = xSpeed;
         this.yd = ySpeed;
         this.zd = zSpeed;
-        this.lifetime = 5;
+        this.lifetime = 7;
         this.setSize(BASE_WIDTH, BASE_WIDTH);
         this.hasPhysics = false;
         this.initialSpeed = (float) Math.sqrt(xSpeed * xSpeed + ySpeed * ySpeed + zSpeed * zSpeed);

@@ -98,7 +98,7 @@ public class Dristmechanic {
 
             event.registerSpriteSet(Dristmechanic.FLASH_STATIC.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
-                            new FlashParticle(level, x, y, z, xSpeed, ySpeed, zSpeed)
+                            new StaticFlashParticle(level, x, y, z)
             );
 
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
