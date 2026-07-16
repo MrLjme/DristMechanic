@@ -164,7 +164,15 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
                     this.getX(), this.getY(0.3D), this.getZ(),
                     5, 0.0D, 0.0D, 0.0D, 0.15D);
+        }
+    }
 
+    @Override
+    protected void tickDeath() {
+        ++this.deathTime;
+        // 2 тика достаточно, чтобы клиент получил пакет о смерти и отрисовал ваши частицы,
+        // но моб не успел проиграть полную анимацию лежания на земле.
+        if (this.deathTime >= 6) {
             this.discard();
         }
     }
