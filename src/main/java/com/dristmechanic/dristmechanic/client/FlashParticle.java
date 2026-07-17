@@ -26,17 +26,13 @@ import org.jetbrains.annotations.Nullable;
 public class FlashParticle extends Particle {
 
     private static final double AIR_DRAG = 0.92D;
-    private static final float BASE_WIDTH = 0.3F;
+    private static final float BASE_WIDTH = 0.2F;
     private static final float BASE_LENGTH = 0.4F;
-
-    private static final float PERP_START = 0.25F;
-    private static final float PERP_END = 0.85F;
 
     private static final float TINT_R = 0.15F;
     private static final float TINT_G = 0.45F;
     private static final float TINT_B = 1.00F;
 
-    // Обе фазы теперь занимают одинаковое время и используют одинаковую механику
     private static final float FADE_IN_TICKS = 2.0F;
     private static final float FADE_OUT_TICKS = 2.0F;
     private static final int FULL_BRIGHT = 0xF000F0;
@@ -82,7 +78,7 @@ public class FlashParticle extends Particle {
         this.xd = xSpeed;
         this.yd = ySpeed;
         this.zd = zSpeed;
-        this.lifetime = 7;
+        this.lifetime = 8;
         this.setSize(BASE_WIDTH, BASE_WIDTH);
         this.hasPhysics = false;
         this.initialSpeed = (float) Math.sqrt(xSpeed * xSpeed + ySpeed * ySpeed + zSpeed * zSpeed);
@@ -142,23 +138,12 @@ public class FlashParticle extends Particle {
             vz /= vlen;
         }
 
-        double dot = vx * nx + vy * ny + vz * nz;
-
-        float absDot = (float) Math.abs(dot);
-        float perpFade = 1.0F - Mth.clamp(
-                (absDot - PERP_START) / (PERP_END - PERP_START), 0.0F, 1.0F);
-        if (perpFade <= 0.0F) {
-            return;
-        }
-
         float t = this.age + partialTicks;
 
-        // Появление: плавное нарастание за 2 тика
         float fadeIn = smoothstep(t / FADE_IN_TICKS);
 
-        // Угасание: начинается за 2 тика до конца жизни, использует ту же smoothstep функцию
         float fadeOutStart = this.lifetime - FADE_OUT_TICKS;
-        float fadeOut = 1.0F;
+        float fadeOut = 2.0F;
         if (t > fadeOutStart) {
             fadeOut = smoothstep((this.lifetime - t) / FADE_OUT_TICKS);
         }
@@ -168,7 +153,8 @@ public class FlashParticle extends Particle {
             return;
         }
 
-        float fade = lifeFade * perpFade;
+        // perpFade полностью удален. Теперь альфа-канал и цвет зависят только от lifeFade.
+        float fade = lifeFade;
         float r = TINT_R * fade;
         float g = TINT_G * fade;
         float b = TINT_B * fade;
@@ -177,6 +163,8 @@ public class FlashParticle extends Particle {
         float scale = fadeIn;
         float w = BASE_WIDTH * (1.0F + this.initialSpeed) * scale;
         float l = BASE_LENGTH * (1.0F + this.initialSpeed * 2.0F) * scale;
+
+        double dot = vx * nx + vy * ny + vz * nz;
 
         double fx = vx - nx * dot;
         double fy = vy - ny * dot;

@@ -1,6 +1,5 @@
 package com.dristmechanic.dristmechanic;
 
-import com.dristmechanic.dristmechanic.client.StaticFlashParticle;
 import com.dristmechanic.dristmechanic.client.FlashParticle;
 import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
@@ -38,13 +37,11 @@ public class Dristmechanic {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<ParticleType<?>> PARTICLES = DeferredRegister.create(BuiltInRegistries.PARTICLE_TYPE, MODID);
-    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH_STATIC = PARTICLES.register("flash_static", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH = PARTICLES.register("flash", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
             properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x4A4A4A, 0xFF6600, properties));
 
-    // Вкладка в креативном меню
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> DRIST_TAB = CREATIVE_MODE_TABS.register("drist_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.dristmechanic"))
             .withTabsBefore(CreativeModeTabs.COMBAT)
@@ -57,14 +54,8 @@ public class Dristmechanic {
     public Dristmechanic(IEventBus modEventBus, ModContainer modContainer) {
         ITEMS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
-
-        // ВАЖНО: Регистрация частиц в шине событий!
         PARTICLES.register(modEventBus);
-
-        // Регистрация сущностей
         ModEntities.ENTITIES.register(modEventBus);
-
-        // Регистрация атрибутов
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
             event.put(ModEntities.TOTEBOT.get(), TotebotEntity.createAttributes().build());
         });
@@ -75,7 +66,6 @@ public class Dristmechanic {
     }
 
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        // Спавн-яйца появляются в группе Misc
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(TOTEBOT_SPAWN_EGG);
         }
@@ -88,17 +78,11 @@ public class Dristmechanic {
             event.registerEntityRenderer(ModEntities.TOTEBOT.get(), TotebotRenderer::new);
         }
 
-        // РЕГИСТРАЦИЯ ПРОВАЙДЕРОВ ЧАСТИЦ НА КЛИЕНТЕ
         @SubscribeEvent
         public static void registerParticles(RegisterParticleProvidersEvent event) {
             event.registerSpriteSet(Dristmechanic.FLASH.get(), spriteSet ->
                     (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
                             new FlashParticle(level, x, y, z, xSpeed, ySpeed, zSpeed)
-            );
-
-            event.registerSpriteSet(Dristmechanic.FLASH_STATIC.get(), spriteSet ->
-                    (options, level, x, y, z, xSpeed, ySpeed, zSpeed) ->
-                            new StaticFlashParticle(level, x, y, z)
             );
 
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
