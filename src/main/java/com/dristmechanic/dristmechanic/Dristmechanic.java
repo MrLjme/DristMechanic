@@ -4,6 +4,7 @@ import com.dristmechanic.dristmechanic.client.FlashParticle;
 import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
+import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.particles.ParticleType;
@@ -52,6 +53,7 @@ public class Dristmechanic {
             .build());
 
     public Dristmechanic(IEventBus modEventBus, ModContainer modContainer) {
+        ModAttachments.ATTACHMENT_TYPES.register(modEventBus);
         ITEMS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
         PARTICLES.register(modEventBus);
@@ -88,4 +90,5 @@ public class Dristmechanic {
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
         }
     }
+
 }
