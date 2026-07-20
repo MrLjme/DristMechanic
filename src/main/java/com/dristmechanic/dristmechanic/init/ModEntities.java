@@ -14,8 +14,9 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<TotebotEntity>> TOTEBOT =
             ENTITIES.register("totebot",
-                    () -> EntityType.Builder.of(TotebotEntity::new, MobCategory.MONSTER)
-                            .sized(0.6f, 1.4f)
+                    () -> EntityType.Builder.of(TotebotEntity::new, MobCategory.CREATURE)
+                            .sized(0.6F, 1.8F)
+                            .clientTrackingRange(10)
                             .build("totebot")
             );
 }

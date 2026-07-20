@@ -35,11 +35,14 @@ import org.slf4j.Logger;
 public class Dristmechanic {
     public static final String MODID = "dristmechanic";
     private static final Logger LOGGER = LogUtils.getLogger();
+
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
     public static final DeferredRegister<ParticleType<?>> PARTICLES = DeferredRegister.create(BuiltInRegistries.PARTICLE_TYPE, MODID);
+
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH = PARTICLES.register("flash", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
+
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
             properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x4A4A4A, 0xFF6600, properties));
 
@@ -58,13 +61,15 @@ public class Dristmechanic {
         CREATIVE_MODE_TABS.register(modEventBus);
         PARTICLES.register(modEventBus);
         ModEntities.ENTITIES.register(modEventBus);
+
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
             event.put(ModEntities.TOTEBOT.get(), TotebotEntity.createAttributes().build());
         });
 
         modEventBus.addListener(this::addCreative);
 
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        // ИЗМЕНЕНО: SERVER вместо COMMON, чтобы конфиг генерировался в папке serverconfig каждого мира
+        modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
     }
 
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
@@ -90,5 +95,4 @@ public class Dristmechanic {
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
         }
     }
-
 }
