@@ -37,6 +37,10 @@ public class ModAttachments {
             ATTACHMENT_TYPES.register("crop_block_count",
                     () -> AttachmentType.builder(() -> 0L).serialize(Codec.LONG).build());
 
+    public static final Supplier<AttachmentType<Integer>> RAIDED_CROP_VALUE = ATTACHMENT_TYPES.register(
+            "raided_crop_value",
+            () -> AttachmentType.builder(() -> 0).serialize(Codec.INT).build());
+
     public static void register(IEventBus modBus) {
         ATTACHMENT_TYPES.register(modBus);
     }

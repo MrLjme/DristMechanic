@@ -107,6 +107,7 @@ public class CropScanningHandler {
     private static void scanChunk(LevelChunk chunk) {
         ServerLevel level = (ServerLevel) chunk.getLevel();
         List<? extends String> currentList = Config.CROP_VALUES.get();
+
         if (currentList != lastConfigList) {
             rebuildCache(currentList);
             lastConfigList = currentList;
@@ -119,13 +120,16 @@ public class CropScanningHandler {
         for (int i = 0; i < sections.length; i++) {
             LevelChunkSection section = sections[i];
             if (section.hasOnlyAir()) continue;
+
             long[] sectionValue = {0};
             section.getStates().count((state, count) -> {
                 int val = cachedValues.getInt(state);
                 if (val > 0) sectionValue[0] += (long) val * count;
             });
+
             if (sectionValue[0] == 0) continue;
             actualValue += sectionValue[0];
+
             int baseY = (i << 4) + level.getMinBuildHeight();
             for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) {
                 if (cachedValues.getInt(section.getBlockState(x, y, z)) > 0) {
@@ -134,11 +138,22 @@ public class CropScanningHandler {
             }
         }
 
-        if (actualValue != chunk.getData(ModAttachments.CROP_COUNT.get())) {
-            chunk.setData(ModAttachments.CROP_COUNT.get(), (int) Math.min(actualValue, Integer.MAX_VALUE));
-            chunk.setData(ModAttachments.SUM_X.get(), sumX); chunk.setData(ModAttachments.SUM_Y.get(), sumY);
-            chunk.setData(ModAttachments.SUM_Z.get(), sumZ); chunk.setData(ModAttachments.CROP_BLOCK_COUNT.get(), cropCount);
+        int currentCropCount = (int) Math.min(actualValue, Integer.MAX_VALUE);
+
+        if (currentCropCount != chunk.getData(ModAttachments.CROP_COUNT.get())) {
+            chunk.setData(ModAttachments.CROP_COUNT.get(), currentCropCount);
+            chunk.setData(ModAttachments.SUM_X.get(), sumX);
+            chunk.setData(ModAttachments.SUM_Y.get(), sumY);
+            chunk.setData(ModAttachments.SUM_Z.get(), sumZ);
+            chunk.setData(ModAttachments.CROP_BLOCK_COUNT.get(), cropCount);
             chunk.setData(ModAttachments.LAST_CHANGE_TICK.get(), level.getGameTime());
+
+            // Если общая ценность упала, уменьшаем "зарейженную" ценность
+            int currentRaided = chunk.getData(ModAttachments.RAIDED_CROP_VALUE.get());
+            if (currentCropCount < currentRaided) {
+                chunk.setData(ModAttachments.RAIDED_CROP_VALUE.get(), currentCropCount);
+            }
+
             chunk.setUnsaved(true);
             FarmManager.onChunkCropUpdate(level, chunk.getPos(), actualValue > 0);
         }

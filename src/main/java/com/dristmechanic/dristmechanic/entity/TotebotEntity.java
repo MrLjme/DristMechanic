@@ -1,6 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -12,6 +13,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -25,10 +27,22 @@ import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.*;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
+import java.util.EnumSet;
+
 public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacker {
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
+
+    private BlockPos raidTarget;
+
+    public BlockPos getRaidTarget() {
+        return raidTarget;
+    }
+
+    public void setRaidTarget(BlockPos raidTarget) {
+        this.raidTarget = raidTarget;
+    }
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
         super(entityType, level);
@@ -42,7 +56,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
 
     @Override
     @NotNull
-    protected PathNavigation createNavigation(@NotNull Level level) { // Исправлено Not annotated parameter
+    protected PathNavigation createNavigation(@NotNull Level level) {
         return new SmoothPathNavigation(this, level);
     }
 
@@ -61,6 +75,8 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        // Приоритет 1: Бежать к центру. Пока активен, блокирует атаку (из-за флага MOVE)
+        this.goalSelector.addGoal(1, new MoveToRaidCenterGoal(this, 1.2D));
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 0.8, 16, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
@@ -155,7 +171,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
 
             serverLevel.sendParticles(Dristmechanic.FLASH.get(),
                     this.getX(), this.getY(0.5D), this.getZ(),
-            25, 0.0D, 0.0D, 0.0D, 0.075D);
+                    25, 0.0D, 0.0D, 0.0D, 0.075D);
 
             serverLevel.sendParticles(Dristmechanic.SCRAP.get(),
                     this.getX(), this.getY(0.3D), this.getZ(),
@@ -166,20 +182,63 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     protected void tickDeath() {
         ++this.deathTime;
-        // 2 тика достаточно, чтобы клиент получил пакет о смерти и отрисовал ваши частицы,
-        // но моб не успел проиграть полную анимацию лежания на земле.
         if (this.deathTime >= 3) {
             this.discard();
         }
     }
 
-    // 3. Перехватываем событие смерти (id = 3), чтобы отменить ванильные белые облачка (POOF)
     @Override
     public void handleEntityEvent(byte id) {
         if (id == 3) {
-            // Ничего не делаем. Это предотвратит спавн стандартных ванильных частиц на клиенте.
             return;
         }
         super.handleEntityEvent(id);
+    }
+
+    public static class MoveToRaidCenterGoal extends Goal {
+        private final TotebotEntity mob;
+        private final double speedModifier;
+
+        public MoveToRaidCenterGoal(TotebotEntity mob, double speedModifier) {
+            this.mob = mob;
+            this.speedModifier = speedModifier;
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE));
+        }
+
+        @Override
+        public boolean canUse() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target == null) return false;
+            double distSq = this.mob.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+            return distSq > 4.0; // Бежим, пока не подойдем ближе 2 блоков
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target == null) return false;
+            double distSq = this.mob.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+            if (distSq <= 4.0) {
+                this.mob.setRaidTarget(null); // Сбрасываем цель, чтобы моб начал атаковать/ломать
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void start() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target != null) {
+                this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+            }
+        }
+
+        @Override
+        public void tick() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target != null && this.mob.getNavigation().isDone()) {
+                this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+            }
+        }
     }
 }
