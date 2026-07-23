@@ -3,7 +3,6 @@
   "package": "com.dristmechanic.dristmechanic.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "ServerLevelMixin"
   ],
   "minVersion": "0.8"
 }

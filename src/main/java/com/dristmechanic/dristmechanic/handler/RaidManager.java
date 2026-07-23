@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class RaidManager {
+
     private static final String NBT_TARGET_TIME = "DristRaidTargetTime";
     private static final String NBT_REMOVE_TIME = "DristRaidRemoveTime";
     private static final String NBT_LOCKED_VALUE = "DristRaidLockedValue";
@@ -115,8 +116,10 @@ public class RaidManager {
     private static void spawnStandForFarm(ServerLevel level, FarmManager.FarmData farm) {
         Vec3 center = farm.center();
         ArmorStand stand = createStand(level, center);
+
         if (stand != null) {
             long nextMidnight = calculateNextMidnight(level);
+
             // Утро (24000) всегда наступает через 6000 тиков после полуночи (18000).
             // Это гарантирует, что стенд удалится утром ПОСЛЕ рейда, когда бы он ни был создан.
             long nextRemove = nextMidnight + 6000L;
@@ -124,7 +127,6 @@ public class RaidManager {
             setTargetTime(stand, nextMidnight);
             setRemoveTime(stand, nextRemove);
             setLockedValue(stand, farm.totalValue());
-            notifyDetection(level);
         }
     }
 
@@ -181,6 +183,7 @@ public class RaidManager {
                 as.discard();
             }
         }
+
         tracked.clear();
     }
 
@@ -190,20 +193,27 @@ public class RaidManager {
 
     private static ArmorStand createStand(ServerLevel level, Vec3 pos) {
         ArmorStand as = EntityType.ARMOR_STAND.create(level);
+
         if (as != null) {
             as.setPos(pos.x, pos.y, pos.z);
             as.setInvisible(true);
+
             byte flags = as.getEntityData().get(ArmorStand.DATA_CLIENT_FLAGS);
             as.getEntityData().set(ArmorStand.DATA_CLIENT_FLAGS, (byte) (flags | 16));
+
             as.setNoBasePlate(true);
             as.setInvulnerable(true);
             as.setNoGravity(true);
             as.addTag(TAG_FARM_CENTER);
             as.setCustomNameVisible(true);
+
             updateHologramText(as, 0);
+
             level.addFreshEntity(as);
+
             return as;
         }
+
         return null;
     }
 
@@ -213,32 +223,21 @@ public class RaidManager {
 
         List<BlockPos> spawnPoints = findRaidSpawnPoints(level, farm, 5, 0.6F, 1.8F);
 
-        if (spawnPoints.isEmpty()) {
-            ThreadLocalRandom rnd = ThreadLocalRandom.current();
-            for (int i = 0; i < 5; i++) {
-                double angle = rnd.nextDouble() * 2 * Math.PI;
-                double distance = rnd.nextDouble(32, 48);
-                BlockPos pos = new BlockPos(
-                        (int)(targetStand.getX() + Math.cos(angle) * distance),
-                        (int)targetStand.getY(),
-                        (int)(targetStand.getZ() + Math.sin(angle) * distance)
-                );
-                spawnPoints.add(pos);
-            }
-        }
-
         int mobCount = Math.min(20, 5 + (farmValue / 1000));
+
         spawnMobs(level, spawnPoints, targetStand, mobCount);
-        notifyRaidStart(level, mobCount);
     }
 
     private static void spawnMobs(ServerLevel level, List<BlockPos> spawnPoints, ArmorStand target, int count) {
         if (spawnPoints.isEmpty() || count <= 0) return;
 
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
+
         for (int i = 0; i < count; i++) {
             BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
+
             EntityType<?> type = rnd.nextBoolean() ? EntityType.ZOMBIE : EntityType.SKELETON;
+
             Entity entity = type.create(level);
 
             if (entity instanceof Mob mob) {
@@ -252,76 +251,107 @@ public class RaidManager {
 
     public static List<BlockPos> findRaidSpawnPoints(ServerLevel level, FarmManager.FarmData farm, int max, float w, float h) {
         List<BlockPos> res = new ArrayList<>();
+
         if (farm == null || farm.isEmpty() || farm.edgeChunks().isEmpty()) return res;
 
         Vec3 c = farm.center();
         int tY = Mth.floor(c.y);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        Map<ChunkPos, List<BlockPos>> cands = new HashMap<>();
-        Map<ChunkPos, Double> scores = new HashMap<>();
 
-        for (ChunkPos ec : farm.edgeChunks()) {
-            int eX = ec.x * 16 + 8, eZ = ec.z * 16 + 8;
-            double dx = eX - c.x, dz = eZ - c.z;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-            double dirX = dist < 1 ? Math.cos(rnd.nextDouble() * 2 * Math.PI) : dx / dist;
-            double dirZ = dist < 1 ? Math.sin(rnd.nextDouble() * 2 * Math.PI) : dz / dist;
+        // Считаем ферму "маленькой", если она занимает 1-2 чанка
+        // (количество граничных чанков <= 4)
+        boolean isSmallFarm = farm.edgeChunks().size() <= 4;
 
-            double spawnDistance = rnd.nextDouble(48, 65);
-            int tX = (int) (eX + dirX * spawnDistance);
-            int tZ = (int) (eZ + dirZ * spawnDistance);
+        List<BlockPos> allCandidates = new ArrayList<>();
 
-            if (CropScanningHandler.getChunkSafe(level, tX >> 4, tZ >> 4) == null) {
-                tX = eX;
-                tZ = eZ;
-            }
+        if (isSmallFarm) {
+            // ЛОГИКА ДЛЯ МАЛЕНЬКИХ ФЕРМ: Круговой спавн от центра
+            // Пытаемся найти точки равномерно во всех направлениях
+            for (int i = 0; i < max * 30 && allCandidates.size() < max * 2; i++) {
+                double angle = rnd.nextDouble() * 2 * Math.PI; // Случайный угол (0 - 360 градусов)
+                double spawnDistance = rnd.nextDouble(32, 48);
 
-            List<BlockPos> lc = new ArrayList<>();
-            Set<Long> cs = new HashSet<>();
-            double tYD = 0;
+                int tX = (int) (c.x + Math.cos(angle) * spawnDistance);
+                int tZ = (int) (c.z + Math.sin(angle) * spawnDistance);
 
-            for (int i = 0; i < max * 20 && lc.size() < max * 2; i++) {
-                BlockPos sp = findClosestValidSpawn(level, tX + rnd.nextInt(-16, 17), tZ + rnd.nextInt(-16, 17), tY, w, h);
-                if (sp != null && cs.add(sp.asLong())) {
-                    lc.add(sp);
-                    tYD += Math.abs(sp.getY() - tY);
+                BlockPos sp = findClosestValidSpawn(level, tX, tZ, tY, w, h);
+                if (sp != null) {
+                    allCandidates.add(sp);
                 }
             }
-            if (!lc.isEmpty()) {
-                cands.put(ec, lc);
-                scores.put(ec, tYD / lc.size());
+        } else {
+            // ЛОГИКА ДЛЯ БОЛЬШИХ ФЕРМ: Спавн от границ наружу
+            Map<ChunkPos, List<BlockPos>> cands = new HashMap<>();
+            Map<ChunkPos, Double> scores = new HashMap<>();
+
+            for (ChunkPos ec : farm.edgeChunks()) {
+                int eX = ec.x * 16 + 8, eZ = ec.z * 16 + 8;
+
+                double dx = eX - c.x, dz = eZ - c.z;
+                double dist = Math.sqrt(dx * dx + dz * dz);
+
+                double dirX = dist < 1 ? Math.cos(rnd.nextDouble() * 2 * Math.PI) : dx / dist;
+                double dirZ = dist < 1 ? Math.sin(rnd.nextDouble() * 2 * Math.PI) : dz / dist;
+
+                double spawnDistance = rnd.nextDouble(32, 48);
+
+                int tX = (int) (eX + dirX * spawnDistance);
+                int tZ = (int) (eZ + dirZ * spawnDistance);
+
+                if (CropScanningHandler.getChunkSafe(level, tX >> 4, tZ >> 4) == null) {
+                    tX = eX;
+                    tZ = eZ;
+                }
+
+                List<BlockPos> lc = new ArrayList<>();
+                Set<Long> cs = new HashSet<>();
+                double tYD = 0;
+
+                for (int i = 0; i < max * 20 && lc.size() < max * 2; i++) {
+                    BlockPos sp = findClosestValidSpawn(level, tX + rnd.nextInt(-16, 17), tZ + rnd.nextInt(-16, 17), tY, w, h);
+                    if (sp != null && cs.add(sp.asLong())) {
+                        lc.add(sp);
+                        tYD += Math.abs(sp.getY() - tY);
+                    }
+                }
+
+                if (!lc.isEmpty()) {
+                    cands.put(ec, lc);
+                    scores.put(ec, tYD / lc.size());
+                }
             }
-        }
 
-        if (cands.isEmpty()) return res;
+            if (cands.isEmpty()) return res;
 
-        List<ChunkPos> vC = new ArrayList<>(cands.keySet());
-        List<Double> wL = new ArrayList<>();
-        double tW = 0;
+            List<ChunkPos> vC = new ArrayList<>(cands.keySet());
+            List<Double> wL = new ArrayList<>();
+            double tW = 0;
 
-        for (ChunkPos ch : vC) {
-            double weight = 1.0 / (1.0 + scores.get(ch));
-            wL.add(weight);
-            tW += weight;
-        }
-
-        double r = rnd.nextDouble() * tW;
-        double cum = 0;
-        ChunkPos sel = vC.getFirst();
-
-        for (int i = 0; i < vC.size(); i++) {
-            cum += wL.get(i);
-            if (r <= cum) {
-                sel = vC.get(i);
-                break;
+            for (ChunkPos ch : vC) {
+                double weight = 1.0 / (1.0 + scores.get(ch));
+                wL.add(weight);
+                tW += weight;
             }
+
+            double r = rnd.nextDouble() * tW;
+            double cum = 0;
+            ChunkPos sel = vC.getFirst();
+
+            for (int i = 0; i < vC.size(); i++) {
+                cum += wL.get(i);
+                if (r <= cum) {
+                    sel = vC.get(i);
+                    break;
+                }
+            }
+
+            allCandidates.addAll(cands.get(sel));
         }
 
-        List<BlockPos> sp = new ArrayList<>(cands.get(sel));
-        Collections.shuffle(sp, rnd);
-
-        for (int i = 0; i < Math.min(max, sp.size()); i++) {
-            res.add(sp.get(i));
+        // Финальное перемешивание и ограничение количества точек
+        Collections.shuffle(allCandidates, rnd);
+        for (int i = 0; i < Math.min(max, allCandidates.size()); i++) {
+            res.add(allCandidates.get(i));
         }
 
         return res;
@@ -330,6 +360,7 @@ public class RaidManager {
     private static BlockPos findClosestValidSpawn(ServerLevel level, int x, int z, int tY, float w, float h) {
         int minY = level.getMinBuildHeight();
         int maxY = level.getMaxBuildHeight();
+
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
 
         for (int o = 0; o < 48; o++) {
@@ -338,6 +369,7 @@ public class RaidManager {
                 m.set(x, yU, z);
                 if (isValidSpawn(level, m, w, h)) return m.immutable();
             }
+
             if (o > 0) {
                 int yD = tY - o;
                 if (yD >= minY) {
@@ -346,11 +378,13 @@ public class RaidManager {
                 }
             }
         }
+
         return null;
     }
 
     private static boolean isValidSpawn(ServerLevel level, BlockPos p, float w, float h) {
         if (!level.isLoaded(p)) return false;
+
         double hw = w / 2.0;
         int mX = Mth.floor(p.getX() - hw);
         int MX = Mth.floor(p.getX() + hw);
@@ -358,6 +392,7 @@ public class RaidManager {
         int MY = Mth.floor(p.getY() + h);
         int mZ = Mth.floor(p.getZ() - hw);
         int MZ = Mth.floor(p.getZ() + hw);
+
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
 
         for (int x = mX; x <= MX; x++) {
@@ -365,58 +400,47 @@ public class RaidManager {
                 for (int z = mZ; z <= MZ; z++) {
                     m.set(x, y, z);
                     BlockState s = level.getBlockState(m);
+
                     if (!s.getCollisionShape(level, m).isEmpty() || !s.getFluidState().isEmpty()) return false;
                 }
             }
         }
+
         m.set(p.getX(), p.getY() - 1, p.getZ());
+
         return !level.getBlockState(m).getCollisionShape(level, m).isEmpty();
     }
 
     private static void updateHologramText(ArmorStand as, long ticksLeft) {
-            long seconds = ticksLeft / 20;
-            long hours = seconds / 3600;
-            long minutes = (seconds % 3600) / 60;
-            long secs = seconds % 60;
+        long seconds = ticksLeft / 20;
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long secs = seconds % 60;
 
-            String timeStr = (hours > 0)
-                    ? String.format("%d:%02d:%02d", hours, minutes, secs)
-                    : String.format("%02d:%02d", minutes, secs);
+        String timeStr = (hours > 0)
+                ? String.format("%d:%02d:%02d", hours, minutes, secs)
+                : String.format("%02d:%02d", minutes, secs);
 
-            as.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED));
+        as.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED));
         as.setCustomNameVisible(true);
-    }
-
-    private static void notifyDetection(ServerLevel level) {
-        Component msg = Component.literal("НЕАВТОРИЗОВАННОЕ ЗЕМЛЕДЕЛИЕ ОБНАРУЖЕНО")
-                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
-        level.getServer().getPlayerList().broadcastSystemMessage(msg, true);
-    }
-
-    private static void notifyRaidStart(ServerLevel level, int mobCount) {
-        Component msg = Component.literal("НЕАВТОРИЗОВАННОЕ ЗЕМЛЕДЕЛИЕ ОБНАРУЖЕНО! РЕЙД НАЧАЛСЯ (" + mobCount + " мобов)")
-                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
-        level.getServer().getPlayerList().broadcastSystemMessage(msg, true);
     }
 
     private static long calculateNextMidnight(ServerLevel level) {
         long currentTime = level.getGameTime();
         long dayTime = level.getDayTime() % 24000L;
+
         long ticksUntilMidnight = (dayTime < 18000L) ? (18000L - dayTime) : ((24000L - dayTime) + 18000L);
+
         return currentTime + ticksUntilMidnight;
     }
 
     private static long getTargetTime(ArmorStand as) { return as.getPersistentData().getLong(NBT_TARGET_TIME); }
     private static void setTargetTime(ArmorStand as, long time) { as.getPersistentData().putLong(NBT_TARGET_TIME, time); }
-
     private static long getRemoveTime(ArmorStand as) { return as.getPersistentData().getLong(NBT_REMOVE_TIME); }
     private static void setRemoveTime(ArmorStand as, long time) { as.getPersistentData().putLong(NBT_REMOVE_TIME, time); }
-
     private static int getLockedValue(ArmorStand as) { return as.getPersistentData().getInt(NBT_LOCKED_VALUE); }
     private static void setLockedValue(ArmorStand as, int val) { as.getPersistentData().putInt(NBT_LOCKED_VALUE, val); }
-
     private static boolean hasRaidScheduled(ArmorStand as) { return as.getPersistentData().contains(NBT_TARGET_TIME); }
-
     private static void clearRaidData(ArmorStand as) {
         as.getPersistentData().remove(NBT_TARGET_TIME);
         as.getPersistentData().remove(NBT_REMOVE_TIME);
