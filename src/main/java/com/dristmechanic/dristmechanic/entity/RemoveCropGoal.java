@@ -6,6 +6,7 @@ import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.RemoveBlockGoal;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 
 public class RemoveCropGoal extends RemoveBlockGoal {
@@ -44,12 +45,23 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         super.start();
         ticksAnimating = 0;
         isAnimating = false;
+        this.mob.setAggressive(true); // Триггерим анимацию бега
+        if (this.mob instanceof AnimatedAttacker aa) aa.resetStuckDetection();
     }
 
     @Override
     public void stop() {
         super.stop();
         ticksAnimating = 0;
+        this.mob.setAggressive(false);
+
+        if (this.mob instanceof AnimatedAttacker aa) {
+            aa.resetStuckDetection();
+            if (aa.getBreakingBlock() != null) {
+                aa.setBreakingBlock(null);
+                aa.setAttackingState(false);
+            }
+        }
 
         if (isAnimating && this.mob instanceof AnimatedAttacker attacker) {
             attacker.setAttackingState(false);
@@ -60,6 +72,17 @@ public class RemoveCropGoal extends RemoveBlockGoal {
     @Override
     public void tick() {
         super.tick();
+
+        // Пока моб идет к посеву и не начал финальную анимацию сбора - проверяем препятствия
+        if (this.blockPos != null && !isAnimating) {
+            if (this.mob instanceof AnimatedAttacker aa) {
+                if (aa.getBreakingBlock() != null) {
+                    aa.tickBreakingBlock(this.mob, false);
+                } else {
+                    aa.tickStuckDetection(this.mob, Vec3.atBottomCenterOf(this.blockPos), false);
+                }
+            }
+        }
 
         double distSq = this.mob.distanceToSqr(this.blockPos.getX() + 0.5, this.blockPos.getY() + 0.5, this.blockPos.getZ() + 0.5);
 
