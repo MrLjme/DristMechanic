@@ -1,9 +1,8 @@
 package com.dristmechanic.dristmechanic;
 
-import com.dristmechanic.dristmechanic.client.FlashParticle;
-import com.dristmechanic.dristmechanic.client.ScrapParticle;
-import com.dristmechanic.dristmechanic.client.TotebotRenderer;
-import com.dristmechanic.dristmechanic.entity.TotebotEntity;
+import com.dristmechanic.dristmechanic.client.*;
+import com.dristmechanic.dristmechanic.client.model.*;
+import com.dristmechanic.dristmechanic.entity.*;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import com.mojang.logging.LogUtils;
@@ -64,6 +63,10 @@ public class Dristmechanic {
 
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
             event.put(ModEntities.TOTEBOT.get(), TotebotEntity.createAttributes().build());
+            event.put(ModEntities.FARMBOT.get(), FarmbotEntity.createAttributes().build());
+            event.put(ModEntities.HAYBOT.get(), HaybotEntity.createAttributes().build());
+            event.put(ModEntities.RED_TAPEBOT.get(), RedTapebotEntity.createAttributes().build());
+            event.put(ModEntities.TAPEBOT.get(), TapebotEntity.createAttributes().build());
         });
 
         modEventBus.addListener(this::addCreative);
@@ -83,7 +86,23 @@ public class Dristmechanic {
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
             event.registerEntityRenderer(ModEntities.TOTEBOT.get(), TotebotRenderer::new);
+            event.registerEntityRenderer(ModEntities.FARMBOT.get(), FarmbotRenderer::new);
+            event.registerEntityRenderer(ModEntities.HAYBOT.get(), HaybotRenderer::new);
+            event.registerEntityRenderer(ModEntities.RED_TAPEBOT.get(), RedTapebotRenderer::new);
+            event.registerEntityRenderer(ModEntities.TAPEBOT.get(), TapebotRenderer::new);
+            event.registerEntityRenderer(ModEntities.TAPE.get(), TapeRenderer::new);
+            event.registerEntityRenderer(ModEntities.RED_TAPE.get(), RedTapeRenderer::new);
         }
+
+        @SubscribeEvent
+        public static void registerLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
+            event.registerLayerDefinition(Modelfarmbot.LAYER_LOCATION, Modelfarmbot::createBodyLayer);
+            event.registerLayerDefinition(Modelhaybot.LAYER_LOCATION, Modelhaybot::createBodyLayer);
+            event.registerLayerDefinition(Modelred_tapebot.LAYER_LOCATION, Modelred_tapebot::createBodyLayer);
+            event.registerLayerDefinition(Modeltapebot.LAYER_LOCATION, Modeltapebot::createBodyLayer);
+            event.registerLayerDefinition(Modeltape.LAYER_LOCATION, Modeltape::createBodyLayer);
+        }
+    }
 
         @SubscribeEvent
         public static void registerParticles(RegisterParticleProvidersEvent event) {
@@ -95,4 +114,3 @@ public class Dristmechanic {
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
         }
     }
-}

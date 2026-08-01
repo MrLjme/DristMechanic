@@ -1,5 +1,4 @@
-package net.mcreator.dristmechanic.client.model;
-
+package com.dristmechanic.dristmechanic.client.model;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.util.Mth;
 import net.minecraft.resources.ResourceLocation;
@@ -16,12 +15,7 @@ import net.minecraft.client.model.EntityModel;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 
-// Made with Blockbench 5.1.4
-// Exported for Minecraft version 1.17 or later with Mojang mappings
-// Paste this class into your mod and generate all required imports
-public class Modelhaybot<T extends Entity> extends EntityModel<T> {
-	// This layer location should be baked with EntityRendererProvider.Context in
-	// the entity renderer and passed into this model's constructor
+public class Modelhaybot<T extends net.minecraft.world.entity.Entity> extends EntityModel<T> {
 	public static final ModelLayerLocation LAYER_LOCATION = new ModelLayerLocation(ResourceLocation.fromNamespaceAndPath("dristmechanic", "modelhaybot"), "main");
 	public final ModelPart head;
 	public final ModelPart bone4;
