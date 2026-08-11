@@ -1,12 +1,15 @@
 package com.dristmechanic.dristmechanic.handler;
 
+import com.dristmechanic.dristmechanic.Config;
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -37,16 +40,22 @@ public class RaidManager {
     private static final String NBT_CENTER_Y = "DristRaidCenterY";
     private static final String NBT_CENTER_Z = "DristRaidCenterZ";
     private static final String TAG_FARM_CENTER = "drist_farm_center";
-
-    private static final long RAID_DELAY_TICKS = 1200L; // 1 минута
+    private static final long RAID_DELAY_TICKS = 1200L;
     private static final Map<ServerLevel, Set<UUID>> trackedStandsByLevel = new ConcurrentHashMap<>();
+    private static final Map<ServerLevel, List<RaidSpawnTask>> activeSpawnTasks = new ConcurrentHashMap<>();
 
     @SubscribeEvent
-    public static void onServerStopping(ServerStoppingEvent event) { trackedStandsByLevel.clear(); }
+    public static void onServerStopping(ServerStoppingEvent event) {
+        trackedStandsByLevel.clear();
+        activeSpawnTasks.clear();
+    }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
-        if (event.getLevel() instanceof ServerLevel sl) trackedStandsByLevel.remove(sl);
+        if (event.getLevel() instanceof ServerLevel sl) {
+            trackedStandsByLevel.remove(sl);
+            activeSpawnTasks.remove(sl);
+        }
     }
 
     @SubscribeEvent
@@ -60,7 +69,32 @@ public class RaidManager {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        for (ServerLevel level : event.getServer().getAllLevels()) tickRaids(level);
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            tickRaids(level);
+            tickSpawnTasks(level);
+        }
+    }
+
+    private static void tickSpawnTasks(ServerLevel level) {
+        List<RaidSpawnTask> tasks = activeSpawnTasks.get(level);
+        if (tasks == null || tasks.isEmpty()) return;
+
+        Iterator<RaidSpawnTask> it = tasks.iterator();
+        long currentTime = level.getGameTime();
+
+        while (it.hasNext()) {
+            RaidSpawnTask task = it.next();
+            if (currentTime >= task.nextSpawnTime) {
+                if (task.spawnIndex < task.spawnGroups.size()) {
+                    SpawnGroup group = task.spawnGroups.get(task.spawnIndex);
+                    spawnGroup(level, group, task.spawnPoints, task.center);
+                    task.spawnIndex++;
+                    task.nextSpawnTime = currentTime + Config.SPAWN_INTERVAL_TICKS.get();
+                } else {
+                    it.remove();
+                }
+            }
+        }
     }
 
     public static void updateHolograms(ServerLevel level, List<FarmManager.FarmData> stableFarms) {
@@ -71,7 +105,6 @@ public class RaidManager {
             if (farm.unraidedValue() > 0) {
                 activeCenters.add(farm.center());
                 ArmorStand stand = getStandNearby(level, farm.center());
-
                 if (stand == null) {
                     spawnStandForFarm(level, farm);
                 } else {
@@ -93,6 +126,7 @@ public class RaidManager {
                     break;
                 }
             }
+
             if (!isActive) {
                 as.discard();
                 return true;
@@ -104,6 +138,7 @@ public class RaidManager {
     private static ArmorStand getStandNearby(ServerLevel level, Vec3 center) {
         Set<UUID> tracked = trackedStandsByLevel.get(level);
         if (tracked == null) return null;
+
         double searchDistSq = 16.0 * 16.0;
         for (UUID uuid : tracked) {
             Entity e = level.getEntity(uuid);
@@ -121,7 +156,6 @@ public class RaidManager {
             setCenter(stand, center);
             long currentTime = level.getGameTime();
             long targetTime = currentTime + RAID_DELAY_TICKS;
-
             setTargetTime(stand, targetTime);
             setLockedValue(stand, farm.unraidedValue());
             notifyDetection(level);
@@ -189,7 +223,6 @@ public class RaidManager {
             farm = new FarmManager.FarmData(List.of(asChunk), farmValue, 0, center, List.of(asChunk));
         }
 
-        // Стенд был просто таймером, удаляем его при начале рейда
         targetStand.discard();
 
         List<BlockPos> spawnPoints = findRaidSpawnPoints(level, farm, 5, 0.6F, 1.8F);
@@ -203,29 +236,216 @@ public class RaidManager {
             }
         }
 
-        int mobCount = Math.min(20, 5 + (farmValue / 1000));
-        spawnMobs(level, spawnPoints, center, mobCount);
-        notifyRaidStart(level, mobCount);
+        int raidLevel = getRaidLevel(farmValue);
+        int playerCount = level.players().size();
+        int budget = calculateBudget(raidLevel, farmValue, playerCount);
+
+        SpawnGroup guaranteedGroup = getGuaranteedSpawn(raidLevel);
+        List<SpawnGroup> budgetGroups = selectBudgetGroups(budget, raidLevel);
+
+        List<SpawnGroup> allGroups = new ArrayList<>();
+        if (guaranteedGroup != null && !guaranteedGroup.enemies.isEmpty()) {
+            allGroups.add(guaranteedGroup);
+        }
+        allGroups.addAll(budgetGroups);
+
+        if (!allGroups.isEmpty()) {
+            RaidSpawnTask task = new RaidSpawnTask();
+            task.spawnGroups = allGroups;
+            task.spawnPoints = spawnPoints;
+            task.center = center;
+            task.spawnIndex = 0;
+            task.nextSpawnTime = level.getGameTime();
+            activeSpawnTasks.computeIfAbsent(level, k -> new ArrayList<>()).add(task);
+
+            int totalMobs = allGroups.stream().mapToInt(g -> g.enemies.stream().mapToInt(e -> e.qty).sum()).sum();
+            notifyRaidStart(level, totalMobs);
+        }
     }
 
-    private static void spawnMobs(ServerLevel level, List<BlockPos> spawnPoints, Vec3 center, int count) {
-        if (spawnPoints.isEmpty() || count <= 0) return;
+    private static void spawnGroup(ServerLevel level, SpawnGroup group, List<BlockPos> spawnPoints, Vec3 center) {
+        if (spawnPoints.isEmpty()) return;
+
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         BlockPos centerPos = new BlockPos((int)center.x, (int)center.y, (int)center.z);
 
-        for (int i = 0; i < count; i++) {
-            BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
-            // Спавним твоего кастомного моба
-            TotebotEntity mob = ModEntities.TOTEBOT.get().create(level);
-            if (mob != null) {
-                mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
-                mob.setPersistenceRequired();
+        for (Enemy enemy : group.enemies) {
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.get(ResourceLocation.tryParse(enemy.entityId));
+            if (entityType == null) continue;
 
-                // Задаем цель бежать к центру огорода
-                mob.setRaidTarget(centerPos);
-                level.addFreshEntity(mob);
+            for (int i = 0; i < enemy.qty; i++) {
+                BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
+                Mob mob = (Mob) entityType.create(level);
+                if (mob != null) {
+                    mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
+                    mob.setPersistenceRequired();
+                    if (mob instanceof TotebotEntity totebot) {
+                        totebot.setRaidTarget(centerPos);
+                    }
+                    level.addFreshEntity(mob);
+                }
             }
         }
+    }
+
+    private static int getRaidLevel(int farmValue) {
+        List<? extends Integer> thresholds = Config.LEVEL_THRESHOLDS.get();
+        int level = 0;
+        for (int i = 0; i < thresholds.size(); i++) {
+            if (farmValue >= thresholds.get(i)) {
+                level = i + 1;
+            } else {
+                break;
+            }
+        }
+        return Math.min(level, thresholds.size());
+    }
+
+    private static int calculateBudget(int levelIndex, int farmValue, int playerCount) {
+        if (levelIndex < 1) return 0;
+
+        List<? extends Integer> thresholds = Config.LEVEL_THRESHOLDS.get();
+        List<? extends Integer> minBudgets = Config.MIN_BUDGET.get();
+        List<? extends Integer> maxBudgets = Config.MAX_BUDGET.get();
+        List<? extends Double> multipliers = Config.PLAYER_MULTIPLIERS.get();
+        int maxCropValue = Config.MAX_CROP_VALUE.get();
+
+        if (levelIndex > thresholds.size() || levelIndex > minBudgets.size() || levelIndex > maxBudgets.size()) {
+            return 0;
+        }
+
+        int currentMin = thresholds.get(levelIndex - 1);
+        int nextMin = (levelIndex < thresholds.size()) ? thresholds.get(levelIndex) : maxCropValue;
+
+        float progress = 1.0f;
+        if (nextMin > currentMin) {
+            progress = (float)(farmValue - currentMin) / (float)(nextMin - currentMin);
+            progress = Math.max(0.0f, Math.min(1.0f, progress));
+        }
+
+        float multiplier = 1.0f;
+        if (playerCount == 1 && multipliers.size() > 0) {
+            multiplier = multipliers.get(0).floatValue();
+        } else if (playerCount == 2 && multipliers.size() > 1) {
+            multiplier = multipliers.get(1).floatValue();
+        } else if (playerCount >= 3 && multipliers.size() > 2) {
+            multiplier = multipliers.get(2).floatValue();
+        }
+
+        int min = minBudgets.get(levelIndex - 1);
+        int max = maxBudgets.get(levelIndex - 1);
+
+        return Math.round(((max - min) * progress) + (min * multiplier));
+    }
+
+    private static SpawnGroup getGuaranteedSpawn(int levelIndex) {
+        List<? extends String> spawns = Config.GUARANTEED_SPAWNS.get();
+        String prefix = levelIndex + ":";
+
+        for (String spawn : spawns) {
+            if (spawn.startsWith(prefix)) {
+                String data = spawn.substring(prefix.length());
+                if (data.startsWith("random:")) {
+                    data = data.substring(7);
+                    String[] options = data.split("\\|");
+                    ThreadLocalRandom rnd = ThreadLocalRandom.current();
+                    String chosen = options[rnd.nextInt(options.length)];
+                    return parseSpawnGroup(chosen, 0, 0);
+                } else {
+                    return parseSpawnGroup(data, 0, 0);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static List<SpawnGroup> selectBudgetGroups(int budget, int levelIndex) {
+        List<SpawnGroup> selected = new ArrayList<>();
+        List<SpawnGroup> availableGroups = getBudgetGroupsForLevel(levelIndex);
+        int remaining = budget;
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        while (remaining > 0) {
+            List<SpawnGroup> affordable = new ArrayList<>();
+            for (SpawnGroup group : availableGroups) {
+                if (group.cost <= remaining) {
+                    affordable.add(group);
+                }
+            }
+
+            if (affordable.isEmpty()) {
+                break;
+            }
+
+            int totalWeight = 0;
+            for (SpawnGroup group : affordable) {
+                totalWeight += group.weight;
+            }
+
+            if (totalWeight <= 0) {
+                break;
+            }
+
+            int roll = random.nextInt(totalWeight);
+            SpawnGroup chosen = affordable.get(0);
+
+            for (SpawnGroup group : affordable) {
+                roll -= group.weight;
+                if (roll < 0) {
+                    chosen = group;
+                    break;
+                }
+            }
+
+            selected.add(chosen);
+            remaining -= chosen.cost;
+        }
+
+        return selected;
+    }
+
+    private static List<SpawnGroup> getBudgetGroupsForLevel(int levelIndex) {
+        List<SpawnGroup> groups = new ArrayList<>();
+        List<? extends String> budgetGroups = Config.BUDGET_GROUPS.get();
+        String prefix = levelIndex + ":";
+
+        for (String entry : budgetGroups) {
+            if (entry.startsWith(prefix)) {
+                String data = entry.substring(prefix.length());
+                String[] parts = data.split(":");
+                if (parts.length >= 4) {
+                    try {
+                        int cost = Integer.parseInt(parts[0]);
+                        int weight = Integer.parseInt(parts[1]);
+                        String enemyData = data.substring(parts[0].length() + parts[1].length() + 2);
+                        SpawnGroup group = parseSpawnGroup(enemyData, cost, weight);
+                        if (group != null) {
+                            groups.add(group);
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+
+        return groups;
+    }
+
+    private static SpawnGroup parseSpawnGroup(String data, int cost, int weight) {
+        List<Enemy> enemies = new ArrayList<>();
+        String[] parts = data.split(",");
+
+        for (String part : parts) {
+            String[] enemyParts = part.trim().split(":");
+            if (enemyParts.length >= 3) {
+                String entityId = enemyParts[0] + ":" + enemyParts[1];
+                try {
+                    int qty = Integer.parseInt(enemyParts[2]);
+                    enemies.add(new Enemy(entityId, qty));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        return enemies.isEmpty() ? null : new SpawnGroup(enemies, cost, weight);
     }
 
     public static List<BlockPos> findRaidSpawnPoints(ServerLevel level, FarmManager.FarmData farm, int max, float w, float h) {
@@ -235,7 +455,6 @@ public class RaidManager {
         Vec3 c = farm.center();
         int tY = Mth.floor(c.y);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
         boolean isSmallFarm = farm.edgeChunks().size() <= 4;
         List<BlockPos> allCandidates = new ArrayList<>();
 
@@ -295,6 +514,7 @@ public class RaidManager {
                 cum += wL.get(i);
                 if (r <= cum) { sel = vC.get(i); break; }
             }
+
             allCandidates.addAll(cands.get(sel));
         }
 
@@ -307,6 +527,7 @@ public class RaidManager {
         int minY = level.getMinBuildHeight();
         int maxY = level.getMaxBuildHeight();
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+
         for (int o = 0; o < 48; o++) {
             int yU = tY + o;
             if (yU < maxY) { m.set(x, yU, z); if (isValidSpawn(level, m, w, h)) return m.immutable(); }
@@ -320,16 +541,19 @@ public class RaidManager {
 
     private static boolean isValidSpawn(ServerLevel level, BlockPos p, float w, float h) {
         if (!level.isLoaded(p)) return false;
+
         double hw = w / 2.0;
         int mX = Mth.floor(p.getX() - hw), MX = Mth.floor(p.getX() + hw);
         int mY = Mth.floor(p.getY()), MY = Mth.floor(p.getY() + h);
         int mZ = Mth.floor(p.getZ() - hw), MZ = Mth.floor(p.getZ() + hw);
         BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+
         for (int x = mX; x <= MX; x++) for (int y = mY; y <= MY; y++) for (int z = mZ; z <= MZ; z++) {
             m.set(x, y, z);
             BlockState s = level.getBlockState(m);
             if (!s.getCollisionShape(level, m).isEmpty() || !s.getFluidState().isEmpty()) return false;
         }
+
         m.set(p.getX(), p.getY() - 1, p.getZ());
         return !level.getBlockState(m).getCollisionShape(level, m).isEmpty();
     }
@@ -359,6 +583,7 @@ public class RaidManager {
         }
         return as.position();
     }
+
     private static void setCenter(ArmorStand as, Vec3 center) {
         as.getPersistentData().putDouble(NBT_CENTER_X, center.x);
         as.getPersistentData().putDouble(NBT_CENTER_Y, center.y);
@@ -370,4 +595,34 @@ public class RaidManager {
     private static int getLockedValue(ArmorStand as) { return as.getPersistentData().getInt(NBT_LOCKED_VALUE); }
     private static void setLockedValue(ArmorStand as, int val) { as.getPersistentData().putInt(NBT_LOCKED_VALUE, val); }
     private static boolean hasRaidScheduled(ArmorStand as) { return as.getPersistentData().contains(NBT_TARGET_TIME); }
+
+    private static class Enemy {
+        public final String entityId;
+        public final int qty;
+
+        public Enemy(String entityId, int qty) {
+            this.entityId = entityId;
+            this.qty = qty;
+        }
+    }
+
+    private static class SpawnGroup {
+        public final List<Enemy> enemies;
+        public final int cost;
+        public final int weight;
+
+        public SpawnGroup(List<Enemy> enemies, int cost, int weight) {
+            this.enemies = enemies;
+            this.cost = cost;
+            this.weight = weight;
+        }
+    }
+
+    private static class RaidSpawnTask {
+        public List<SpawnGroup> spawnGroups;
+        public List<BlockPos> spawnPoints;
+        public Vec3 center;
+        public int spawnIndex;
+        public long nextSpawnTime;
+    }
 }

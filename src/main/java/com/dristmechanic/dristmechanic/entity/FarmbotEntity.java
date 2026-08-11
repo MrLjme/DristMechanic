@@ -4,6 +4,7 @@ import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -42,6 +43,9 @@ public class FarmbotEntity extends Monster {
 
     @Override
     public boolean hurt(DamageSource damageSource, float damage) {
+        if (damageSource.isDirect() && damageSource.getEntity() instanceof LivingEntity) {
+            return false;
+        }
         boolean flag = super.hurt(damageSource, damage);
         if (!this.level().isClientSide) {
             ServerLevel serverLevel = (ServerLevel) this.level();

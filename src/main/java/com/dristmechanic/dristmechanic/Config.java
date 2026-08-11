@@ -10,10 +10,10 @@ import java.util.List;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class Config {
+
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> CROP_VALUES = BUILDER
-            .comment("Ценность культур для расчета рейда. Формат: 'modid:block_name=value'")
             .defineList("cropValues", Arrays.asList(
                     "minecraft:wheat=1",
                     "minecraft:carrots=2",
@@ -23,10 +23,92 @@ public class Config {
                     "minecraft:pumpkin_stem=3"
             ), obj -> obj instanceof String);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LEVEL_THRESHOLDS = BUILDER
+            .defineList("levelThresholds", Arrays.asList(0, 50, 100, 550, 1000, 5500, 10001), obj -> obj instanceof Integer);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> MIN_BUDGET = BUILDER
+            .defineList("minBudget", Arrays.asList(2, 20, 75, 125, 300, 500, 1000), obj -> obj instanceof Integer);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> MAX_BUDGET = BUILDER
+            .defineList("maxBudget", Arrays.asList(30, 50, 135, 200, 500, 700, 5000), obj -> obj instanceof Integer);
+
+    public static final ModConfigSpec.IntValue MAX_CROP_VALUE = BUILDER
+            .defineInRange("maxCropValue", 100000, 1, Integer.MAX_VALUE);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Double>> PLAYER_MULTIPLIERS = BUILDER
+            .defineList("playerMultipliers", Arrays.asList(1.0, 1.5, 2.0), obj -> obj instanceof Double);
+
+    public static final ModConfigSpec.IntValue SPAWN_INTERVAL_TICKS = BUILDER
+            .defineInRange("spawnIntervalTicks", 40, 1, 1200);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> GUARANTEED_SPAWNS = BUILDER
+            .defineList("guaranteedSpawns", Arrays.asList(
+                    "1:dristmechanic:haybot:1,dristmechanic:green_totebot:2",
+                    "2:dristmechanic:haybot:3,dristmechanic:green_totebot:2",
+                    "3:dristmechanic:haybot:3,dristmechanic:green_totebot:2,dristmechanic:blue_totebot:1",
+                    "4:random:dristmechanic:haybot:2,dristmechanic:blue_totebot:1,dristmechanic:green_tapebot:1,dristmechanic:yellow_tapebot:1|dristmechanic:haybot:2,dristmechanic:green_totebot:2,dristmechanic:blue_totebot:1,dristmechanic:green_tapebot:1|dristmechanic:green_totebot:2,dristmechanic:red_totebot:1",
+                    "5:dristmechanic:farmbot:1",
+                    "6:dristmechanic:farmbot:1",
+                    "7:dristmechanic:farmbot:3"
+            ), obj -> obj instanceof String);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> BUDGET_GROUPS = BUILDER
+            .defineList("budgetGroups", Arrays.asList(
+                    "1:2:1:dristmechanic:green_totebot:1",
+                    "1:4:10:dristmechanic:green_totebot:2",
+                    "1:5:100:dristmechanic:haybot:1",
+                    "1:9:100:dristmechanic:green_totebot:2,dristmechanic:haybot:1",
+                    "1:12:100:dristmechanic:green_totebot:1,dristmechanic:haybot:2",
+                    "2:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "2:12:10:dristmechanic:green_totebot:1,dristmechanic:haybot:1,dristmechanic:blue_totebot:1",
+                    "2:17:50:dristmechanic:green_totebot:1,dristmechanic:haybot:2,dristmechanic:blue_totebot:1",
+                    "2:19:100:dristmechanic:green_totebot:2,dristmechanic:haybot:3",
+                    "3:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "3:12:10:dristmechanic:green_totebot:1,dristmechanic:haybot:1,dristmechanic:blue_totebot:1",
+                    "3:17:50:dristmechanic:green_totebot:1,dristmechanic:haybot:2,dristmechanic:blue_totebot:1",
+                    "3:19:100:dristmechanic:green_totebot:2,dristmechanic:haybot:3",
+                    "3:24:50:dristmechanic:green_totebot:2,dristmechanic:red_totebot:1",
+                    "3:16:50:dristmechanic:green_totebot:3,dristmechanic:green_tapebot:1,dristmechanic:yellow_tapebot:1",
+                    "4:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "4:12:10:dristmechanic:green_totebot:1,dristmechanic:haybot:1,dristmechanic:blue_totebot:1",
+                    "4:17:50:dristmechanic:green_totebot:1,dristmechanic:haybot:2,dristmechanic:blue_totebot:1",
+                    "4:19:100:dristmechanic:green_totebot:2,dristmechanic:haybot:3",
+                    "4:19:50:dristmechanic:green_totebot:2,dristmechanic:red_totebot:1",
+                    "4:19:50:dristmechanic:green_totebot:2,dristmechanic:yellow_totebot:1",
+                    "4:16:50:dristmechanic:green_totebot:3,dristmechanic:green_tapebot:1,dristmechanic:yellow_tapebot:1",
+                    "4:19:50:dristmechanic:green_totebot:2,dristmechanic:green_tapebot:2,dristmechanic:yellow_tapebot:1",
+                    "5:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "5:14:10:dristmechanic:green_totebot:2,dristmechanic:haybot:2",
+                    "5:21:100:dristmechanic:green_totebot:3,dristmechanic:haybot:3",
+                    "5:21:100:dristmechanic:green_totebot:3,dristmechanic:blue_totebot:3",
+                    "5:36:100:dristmechanic:green_totebot:3,dristmechanic:yellow_totebot:2",
+                    "5:36:100:dristmechanic:green_totebot:3,dristmechanic:red_totebot:2",
+                    "5:31:100:dristmechanic:green_totebot:3,dristmechanic:green_tapebot:3,dristmechanic:yellow_tapebot:2",
+                    "5:56:80:dristmechanic:green_totebot:3,dristmechanic:tapebot:2",
+                    "5:75:60:dristmechanic:farmbot:1",
+                    "6:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "6:14:10:dristmechanic:green_totebot:2,dristmechanic:haybot:2",
+                    "6:21:100:dristmechanic:green_totebot:3,dristmechanic:haybot:3",
+                    "6:21:100:dristmechanic:green_totebot:3,dristmechanic:blue_totebot:3",
+                    "6:36:100:dristmechanic:green_totebot:3,dristmechanic:yellow_totebot:2",
+                    "6:36:100:dristmechanic:green_totebot:3,dristmechanic:red_totebot:2",
+                    "6:31:100:dristmechanic:green_totebot:3,dristmechanic:green_tapebot:3,dristmechanic:yellow_tapebot:2",
+                    "6:56:80:dristmechanic:green_totebot:3,dristmechanic:tapebot:2",
+                    "6:75:60:dristmechanic:farmbot:1",
+                    "7:7:1:dristmechanic:green_totebot:1,dristmechanic:haybot:1",
+                    "7:14:10:dristmechanic:green_totebot:2,dristmechanic:haybot:2",
+                    "7:21:100:dristmechanic:green_totebot:3,dristmechanic:haybot:3",
+                    "7:21:100:dristmechanic:green_totebot:3,dristmechanic:blue_totebot:3",
+                    "7:36:100:dristmechanic:green_totebot:3,dristmechanic:yellow_totebot:2",
+                    "7:36:100:dristmechanic:green_totebot:3,dristmechanic:red_totebot:2",
+                    "7:31:100:dristmechanic:green_totebot:3,dristmechanic:green_tapebot:3,dristmechanic:yellow_tapebot:2",
+                    "7:56:80:dristmechanic:green_totebot:3,dristmechanic:tapebot:2",
+                    "7:75:60:dristmechanic:farmbot:1"
+            ), obj -> obj instanceof String);
+
     static final ModConfigSpec SPEC = BUILDER.build();
 
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event) {
-        // Кэш обновляется лениво в CropScanningHandler
     }
 }
