@@ -94,8 +94,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        // Унифицированная скорость 1.0D для всех
-        this.goalSelector.addGoal(1, new MoveToRaidCenterGoal(this, 1.0D));
+        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 1.0D, 16, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));

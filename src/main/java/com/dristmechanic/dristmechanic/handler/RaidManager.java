@@ -2,6 +2,8 @@ package com.dristmechanic.dristmechanic.handler;
 
 import com.dristmechanic.dristmechanic.Config;
 import com.dristmechanic.dristmechanic.Dristmechanic;
+import com.dristmechanic.dristmechanic.entity.FarmbotEntity;
+import com.dristmechanic.dristmechanic.entity.HaybotEntity;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
@@ -128,6 +130,9 @@ public class RaidManager {
             }
 
             if (!isActive) {
+                if (hasRaidScheduled(as)) {
+                    return false;
+                }
                 as.discard();
                 return true;
             }
@@ -225,17 +230,6 @@ public class RaidManager {
 
         targetStand.discard();
 
-        List<BlockPos> spawnPoints = findRaidSpawnPoints(level, farm, 5, 0.6F, 1.8F);
-        if (spawnPoints.isEmpty()) {
-            ThreadLocalRandom rnd = ThreadLocalRandom.current();
-            for (int i = 0; i < 5; i++) {
-                double angle = rnd.nextDouble() * 2 * Math.PI;
-                double distance = rnd.nextDouble(32, 48);
-                BlockPos pos = new BlockPos((int)(center.x + Math.cos(angle) * distance), (int)center.y, (int)(center.z + Math.sin(angle) * distance));
-                spawnPoints.add(pos);
-            }
-        }
-
         int raidLevel = getRaidLevel(farmValue);
         int playerCount = level.players().size();
         int budget = calculateBudget(raidLevel, farmValue, playerCount);
@@ -243,22 +237,85 @@ public class RaidManager {
         SpawnGroup guaranteedGroup = getGuaranteedSpawn(raidLevel);
         List<SpawnGroup> budgetGroups = selectBudgetGroups(budget, raidLevel);
 
-        List<SpawnGroup> allGroups = new ArrayList<>();
-        if (guaranteedGroup != null && !guaranteedGroup.enemies.isEmpty()) {
-            allGroups.add(guaranteedGroup);
-        }
-        allGroups.addAll(budgetGroups);
+        List<Enemy> allGeneratedEnemies = new ArrayList<>();
+        if (guaranteedGroup != null) allGeneratedEnemies.addAll(guaranteedGroup.enemies);
+        for (SpawnGroup bg : budgetGroups) allGeneratedEnemies.addAll(bg.enemies);
 
-        if (!allGroups.isEmpty()) {
+        if (allGeneratedEnemies.isEmpty()) {
+            SpawnGroup fallback = getGuaranteedSpawn(Math.max(1, raidLevel - 1));
+            if (fallback != null) allGeneratedEnemies.addAll(fallback.enemies);
+        }
+
+        if (allGeneratedEnemies.isEmpty()) return;
+
+        Map<String, Integer> enemyCounts = new LinkedHashMap<>();
+        for (Enemy e : allGeneratedEnemies) {
+            enemyCounts.merge(e.entityId, e.qty, Integer::sum);
+        }
+
+        int totalMobs = enemyCounts.values().stream().mapToInt(Integer::intValue).sum();
+        int mobsPerWave = Math.max(1, totalMobs / 3);
+
+        List<SpawnGroup> waves = new ArrayList<>();
+        List<Enemy> currentWave = new ArrayList<>();
+        int currentWaveSize = 0;
+
+        for (Map.Entry<String, Integer> entry : enemyCounts.entrySet()) {
+            String entityId = entry.getKey();
+            int remaining = entry.getValue();
+
+            while (remaining > 0) {
+                int spaceInWave = mobsPerWave - currentWaveSize;
+                int toAdd = Math.min(remaining, spaceInWave);
+
+                if (toAdd > 0) {
+                    Enemy existing = currentWave.stream().filter(e -> e.entityId.equals(entityId)).findFirst().orElse(null);
+                    if (existing != null) {
+                        existing.qty += toAdd;
+                    } else {
+                        currentWave.add(new Enemy(entityId, toAdd));
+                    }
+                    currentWaveSize += toAdd;
+                    remaining -= toAdd;
+                }
+
+                if (currentWaveSize >= mobsPerWave) {
+                    waves.add(new SpawnGroup(new ArrayList<>(currentWave), 0, 0));
+                    currentWave.clear();
+                    currentWaveSize = 0;
+                }
+            }
+        }
+
+        if (!currentWave.isEmpty()) {
+            waves.add(new SpawnGroup(currentWave, 0, 0));
+        }
+
+        int desiredSpawnPoints = Math.max(15, Math.min(60, totalMobs / 3));
+        List<BlockPos> spawnPoints = findRaidSpawnPoints(level, farm, desiredSpawnPoints, 0.9F, 1.8F);
+
+        if (spawnPoints.size() < 10) {
+            ThreadLocalRandom rnd = ThreadLocalRandom.current();
+            int attempts = 0;
+            while (spawnPoints.size() < desiredSpawnPoints && attempts < 300) {
+                double angle = rnd.nextDouble() * 2 * Math.PI;
+                double distance = rnd.nextDouble(32, 65);
+                int tX = (int)(center.x + Math.cos(angle) * distance);
+                int tZ = (int)(center.z + Math.sin(angle) * distance);
+                BlockPos sp = findClosestValidSpawn(level, tX, tZ, (int)center.y, 0.9F, 1.8F);
+                if (sp != null) spawnPoints.add(sp);
+                attempts++;
+            }
+        }
+
+        if (!waves.isEmpty()) {
             RaidSpawnTask task = new RaidSpawnTask();
-            task.spawnGroups = allGroups;
+            task.spawnGroups = waves;
             task.spawnPoints = spawnPoints;
             task.center = center;
             task.spawnIndex = 0;
             task.nextSpawnTime = level.getGameTime();
             activeSpawnTasks.computeIfAbsent(level, k -> new ArrayList<>()).add(task);
-
-            int totalMobs = allGroups.stream().mapToInt(g -> g.enemies.stream().mapToInt(e -> e.qty).sum()).sum();
             notifyRaidStart(level, totalMobs);
         }
     }
@@ -284,6 +341,10 @@ public class RaidManager {
                     mob.setPersistenceRequired();
                     if (mob instanceof TotebotEntity totebot) {
                         totebot.setRaidTarget(centerPos);
+                    } else if (mob instanceof FarmbotEntity farmbot) {
+                        farmbot.setRaidTarget(centerPos);
+                    } else if (mob instanceof HaybotEntity haybot) {
+                        haybot.setRaidTarget(centerPos);
                     }
                     level.addFreshEntity(mob);
                 }
@@ -415,12 +476,15 @@ public class RaidManager {
         for (String entry : budgetGroups) {
             if (entry.startsWith(prefix)) {
                 String data = entry.substring(prefix.length());
-                String[] parts = data.split(":");
-                if (parts.length >= 4) {
+                int firstColon = data.indexOf(':');
+                int secondColon = data.indexOf(':', firstColon + 1);
+
+                if (firstColon > 0 && secondColon > firstColon) {
                     try {
-                        int cost = Integer.parseInt(parts[0]);
-                        int weight = Integer.parseInt(parts[1]);
-                        String enemyData = data.substring(parts[0].length() + parts[1].length() + 2);
+                        int cost = Integer.parseInt(data.substring(0, firstColon));
+                        int weight = Integer.parseInt(data.substring(firstColon + 1, secondColon));
+                        String enemyData = data.substring(secondColon + 1);
+
                         SpawnGroup group = parseSpawnGroup(enemyData, cost, weight);
                         if (group != null) {
                             groups.add(group);
@@ -459,22 +523,37 @@ public class RaidManager {
         int tY = Mth.floor(c.y);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         boolean isSmallFarm = farm.edgeChunks().size() <= 4;
-        List<BlockPos> allCandidates = new ArrayList<>();
 
         if (isSmallFarm) {
-            for (int i = 0; i < max * 30 && allCandidates.size() < max * 2; i++) {
-                double angle = rnd.nextDouble() * 2 * Math.PI;
+            double angleStep = (2 * Math.PI) / max;
+            for (int i = 0; i < max; i++) {
+                double baseAngle = i * angleStep;
+                double angle = baseAngle + rnd.nextDouble(-angleStep / 4, angleStep / 4);
                 double spawnDistance = rnd.nextDouble(32, 48);
                 int tX = (int) (c.x + Math.cos(angle) * spawnDistance);
                 int tZ = (int) (c.z + Math.sin(angle) * spawnDistance);
                 BlockPos sp = findClosestValidSpawn(level, tX, tZ, tY, w, h);
-                if (sp != null) allCandidates.add(sp);
+                if (sp != null) res.add(sp);
             }
         } else {
-            Map<ChunkPos, List<BlockPos>> cands = new HashMap<>();
-            Map<ChunkPos, Double> scores = new HashMap<>();
+            List<ChunkPos> edgeChunks = new ArrayList<>(farm.edgeChunks());
 
-            for (ChunkPos ec : farm.edgeChunks()) {
+            edgeChunks.sort((c1, c2) -> {
+                int eX1 = c1.x * 16 + 8, eZ1 = c1.z * 16 + 8;
+                int eX2 = c2.x * 16 + 8, eZ2 = c2.z * 16 + 8;
+                double angle1 = Math.atan2(eZ1 - c.z, eX1 - c.x);
+                double angle2 = Math.atan2(eZ2 - c.z, eX2 - c.x);
+                return Double.compare(angle1, angle2);
+            });
+
+            int chunksCount = edgeChunks.size();
+            double chunkStep = (double) chunksCount / max;
+
+            for (int i = 0; i < max; i++) {
+                int chunkIndex = (int) (i * chunkStep + rnd.nextDouble(chunkStep));
+                chunkIndex = Math.min(chunkIndex, chunksCount - 1);
+                ChunkPos ec = edgeChunks.get(chunkIndex);
+
                 int eX = ec.x * 16 + 8, eZ = ec.z * 16 + 8;
                 double dx = eX - c.x, dz = eZ - c.z;
                 double dist = Math.sqrt(dx * dx + dz * dz);
@@ -486,43 +565,13 @@ public class RaidManager {
 
                 if (CropScanningHandler.getChunkSafe(level, tX >> 4, tZ >> 4) == null) { tX = eX; tZ = eZ; }
 
-                List<BlockPos> lc = new ArrayList<>();
-                Set<Long> cs = new HashSet<>();
-                double tYD = 0;
-
-                for (int i = 0; i < max * 20 && lc.size() < max * 2; i++) {
-                    BlockPos sp = findClosestValidSpawn(level, tX + rnd.nextInt(-16, 17), tZ + rnd.nextInt(-16, 17), tY, w, h);
-                    if (sp != null && cs.add(sp.asLong())) { lc.add(sp); tYD += Math.abs(sp.getY() - tY); }
+                BlockPos sp = findClosestValidSpawn(level, tX + rnd.nextInt(-8, 9), tZ + rnd.nextInt(-8, 9), tY, w, h);
+                if (sp != null) {
+                    res.add(sp);
                 }
-
-                if (!lc.isEmpty()) { cands.put(ec, lc); scores.put(ec, tYD / lc.size()); }
             }
-
-            if (cands.isEmpty()) return res;
-
-            List<ChunkPos> vC = new ArrayList<>(cands.keySet());
-            List<Double> wL = new ArrayList<>();
-            double tW = 0;
-
-            for (ChunkPos ch : vC) {
-                double weight = 1.0 / (1.0 + scores.get(ch));
-                wL.add(weight); tW += weight;
-            }
-
-            double r = rnd.nextDouble() * tW;
-            double cum = 0;
-            ChunkPos sel = vC.getFirst();
-
-            for (int i = 0; i < vC.size(); i++) {
-                cum += wL.get(i);
-                if (r <= cum) { sel = vC.get(i); break; }
-            }
-
-            allCandidates.addAll(cands.get(sel));
         }
 
-        Collections.shuffle(allCandidates, rnd);
-        for (int i = 0; i < Math.min(max, allCandidates.size()); i++) res.add(allCandidates.get(i));
         return res;
     }
 
@@ -600,8 +649,8 @@ public class RaidManager {
     private static boolean hasRaidScheduled(ArmorStand as) { return as.getPersistentData().contains(NBT_TARGET_TIME); }
 
     private static class Enemy {
-        public final String entityId;
-        public final int qty;
+        public String entityId;
+        public int qty;
 
         public Enemy(String entityId, int qty) {
             this.entityId = entityId;

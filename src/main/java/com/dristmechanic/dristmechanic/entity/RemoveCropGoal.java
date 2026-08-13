@@ -45,8 +45,16 @@ public class RemoveCropGoal extends RemoveBlockGoal {
         super.start();
         ticksAnimating = 0;
         isAnimating = false;
-        this.mob.setAggressive(true); // Триггерим анимацию бега
+        this.mob.setAggressive(true);
         if (this.mob instanceof AnimatedAttacker aa) aa.resetStuckDetection();
+
+        if (this.mob instanceof TotebotEntity te) {
+            te.setRaidTarget(null);
+        } else if (this.mob instanceof FarmbotEntity fe) {
+            fe.setRaidTarget(null);
+        } else if (this.mob instanceof HaybotEntity he) {
+            he.setRaidTarget(null);
+        }
     }
 
     @Override
@@ -73,7 +81,6 @@ public class RemoveCropGoal extends RemoveBlockGoal {
     public void tick() {
         super.tick();
 
-        // Пока моб идет к посеву и не начал финальную анимацию сбора - проверяем препятствия
         if (this.blockPos != null && !isAnimating) {
             if (this.mob instanceof AnimatedAttacker aa) {
                 if (aa.getBreakingBlock() != null) {
