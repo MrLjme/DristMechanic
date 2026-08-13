@@ -34,7 +34,7 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 14.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.3D)
-                .add(Attributes.FOLLOW_RANGE, 16.0D);
+                .add(Attributes.FOLLOW_RANGE, 32.0D);
     }
 
     public BlockPos getRaidTarget() {
@@ -47,13 +47,14 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
 
     @Override
     protected void registerGoals() {
+
+        this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 20, 15.0F));
+        this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 20, 20.0F));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
         this.goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
     @Override
