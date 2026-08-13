@@ -14,6 +14,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.RangedAttackMob;
@@ -24,7 +25,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 public class RedTapebotEntity extends Monster implements RangedAttackMob {
-
     private BlockPos raidTarget;
 
     public RedTapebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -51,9 +51,10 @@ public class RedTapebotEntity extends Monster implements RangedAttackMob {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 15, 15.0F));
-        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
-        this.goalSelector.addGoal(3, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        this.goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new RandomLookAroundGoal(this));
+        this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
@@ -121,11 +122,13 @@ public class RedTapebotEntity extends Monster implements RangedAttackMob {
             BlockPos target = this.mob.getRaidTarget();
             if (target != null) {
                 this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+                this.mob.setAggressive(true);
             }
         }
 
         @Override
         public void stop() {
+            this.mob.setAggressive(false);
             this.mob.getNavigation().stop();
         }
 

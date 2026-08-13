@@ -13,6 +13,7 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Monster;
@@ -24,7 +25,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 public class FarmbotEntity extends Monster implements AnimatedAttacker {
-
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
     private int attackTicks = 0;
@@ -48,7 +48,6 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     public BlockPos getBreakingBlock() { return breakingBlock; }
     @Override
     public void setBreakingBlock(BlockPos pos) { this.breakingBlock = pos; }
-
     @Override
     public void setAttackingState(boolean attacking) { this.isAttackingState = attacking; }
     @Override
@@ -75,7 +74,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 40.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.35D)
+                .add(Attributes.MOVEMENT_SPEED, 0.45D)
                 .add(Attributes.ATTACK_DAMAGE, 10.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
@@ -86,10 +85,11 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
-        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true, false));
         this.goalSelector.addGoal(2, new RemoveCropGoal(this, 1.0D, 16, 3));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
+        this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
@@ -180,7 +180,6 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
                 } else {
                     this.mob.tickStuckDetection(this.mob, Vec3.atBottomCenterOf(target), true);
                 }
-
                 if (this.mob.getNavigation().isDone()) {
                     this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
                 }

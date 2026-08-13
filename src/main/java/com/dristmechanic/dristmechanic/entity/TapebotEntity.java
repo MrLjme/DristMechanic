@@ -1,7 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
+import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -14,6 +14,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.RangedAttackMob;
@@ -23,7 +24,6 @@ import net.minecraft.world.level.Level;
 import java.util.EnumSet;
 
 public class TapebotEntity extends Monster implements RangedAttackMob {
-
     private BlockPos raidTarget;
 
     public TapebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -49,10 +49,11 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 20, 15.0F));
-        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
-        this.goalSelector.addGoal(3, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        this.goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
+        this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
     @Override
@@ -64,17 +65,26 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
     public boolean hurt(DamageSource damageSource, float damage) {
         boolean flag = super.hurt(damageSource, damage);
         if (!this.level().isClientSide) {
-            ((ServerLevel) this.level()).sendParticles(ParticleTypes.CRIT, this.getX(), this.getY(0.5D), this.getZ(), 10, 0.2D, 0.2D, 0.2D, 0.1D);
+            ServerLevel serverLevel = (ServerLevel) this.level();
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 5, 0.1D, 0.5D, 0.1D, 0.15D);
         }
         return flag;
     }
 
     @Override
+    public void die(DamageSource damageSource) {
+        super.die(damageSource);
+        if (!this.level().isClientSide) {
+            ServerLevel serverLevel = (ServerLevel) this.level();
+            serverLevel.sendParticles(Dristmechanic.FLASH.get(), this.getX(), this.getY(0.5D), this.getZ(), 25, 0.0D, 0.0D, 0.0D, 0.075D);
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 5, 0.0D, 0.0D, 0.0D, 0.15D);
+        }
+    }
+
+    @Override
     protected void tickDeath() {
         ++this.deathTime;
-        if (this.deathTime >= 20) {
-            this.discard();
-        }
+        if (this.deathTime >= 3) this.discard();
     }
 
     public static class MoveToRaidCenterGoal extends Goal {
@@ -110,11 +120,13 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
             BlockPos target = this.mob.getRaidTarget();
             if (target != null) {
                 this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+                this.mob.setAggressive(true);
             }
         }
 
         @Override
         public void stop() {
+            this.mob.setAggressive(false);
             this.mob.getNavigation().stop();
         }
 

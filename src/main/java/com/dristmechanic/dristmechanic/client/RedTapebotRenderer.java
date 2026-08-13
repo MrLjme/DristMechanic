@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.entity.MobRenderer;
 import net.minecraft.resources.ResourceLocation;
 
 public class RedTapebotRenderer extends MobRenderer<RedTapebotEntity, Modelred_tapebot<RedTapebotEntity>> {
+
     public RedTapebotRenderer(EntityRendererProvider.Context context) {
         super(context, new Modelred_tapebot<>(context.bakeLayer(Modelred_tapebot.LAYER_LOCATION)), 0.45f);
     }

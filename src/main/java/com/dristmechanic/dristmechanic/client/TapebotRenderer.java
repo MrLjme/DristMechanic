@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.entity.MobRenderer;
 import net.minecraft.resources.ResourceLocation;
 
 public class TapebotRenderer extends MobRenderer<TapebotEntity, Modeltapebot<TapebotEntity>> {
+
     public TapebotRenderer(EntityRendererProvider.Context context) {
         super(context, new Modeltapebot<>(context.bakeLayer(Modeltapebot.LAYER_LOCATION)), 0.45f);
     }
