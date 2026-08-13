@@ -1,8 +1,24 @@
 package com.dristmechanic.dristmechanic;
 
-import com.dristmechanic.dristmechanic.client.*;
-import com.dristmechanic.dristmechanic.client.model.*;
-import com.dristmechanic.dristmechanic.entity.*;
+import com.dristmechanic.dristmechanic.client.FarmbotRenderer;
+import com.dristmechanic.dristmechanic.client.FlashParticle;
+import com.dristmechanic.dristmechanic.client.HaybotRenderer;
+import com.dristmechanic.dristmechanic.client.RedTapeRenderer;
+import com.dristmechanic.dristmechanic.client.RedTapebotRenderer;
+import com.dristmechanic.dristmechanic.client.ScrapParticle;
+import com.dristmechanic.dristmechanic.client.TapeRenderer;
+import com.dristmechanic.dristmechanic.client.TapebotRenderer;
+import com.dristmechanic.dristmechanic.client.TotebotRenderer;
+import com.dristmechanic.dristmechanic.client.model.Modelfarmbot;
+import com.dristmechanic.dristmechanic.client.model.Modelhaybot;
+import com.dristmechanic.dristmechanic.client.model.Modelred_tapebot;
+import com.dristmechanic.dristmechanic.client.model.Modeltape;
+import com.dristmechanic.dristmechanic.client.model.Modeltapebot;
+import com.dristmechanic.dristmechanic.entity.FarmbotEntity;
+import com.dristmechanic.dristmechanic.entity.HaybotEntity;
+import com.dristmechanic.dristmechanic.entity.RedTapebotEntity;
+import com.dristmechanic.dristmechanic.entity.TapebotEntity;
+import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import com.mojang.logging.LogUtils;
@@ -71,7 +87,6 @@ public class Dristmechanic {
 
         modEventBus.addListener(this::addCreative);
 
-        // ИЗМЕНЕНО: SERVER вместо COMMON, чтобы конфиг генерировался в папке serverconfig каждого мира
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
     }
 
@@ -102,7 +117,6 @@ public class Dristmechanic {
             event.registerLayerDefinition(Modeltapebot.LAYER_LOCATION, Modeltapebot::createBodyLayer);
             event.registerLayerDefinition(Modeltape.LAYER_LOCATION, Modeltape::createBodyLayer);
         }
-    }
 
         @SubscribeEvent
         public static void registerParticles(RegisterParticleProvidersEvent event) {
@@ -114,3 +128,4 @@ public class Dristmechanic {
             event.registerSpecial(Dristmechanic.SCRAP.get(), new ScrapParticle.Factory());
         }
     }
+}

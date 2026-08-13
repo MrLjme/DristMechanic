@@ -270,7 +270,10 @@ public class RaidManager {
         BlockPos centerPos = new BlockPos((int)center.x, (int)center.y, (int)center.z);
 
         for (Enemy enemy : group.enemies) {
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.get(ResourceLocation.tryParse(enemy.entityId));
+            ResourceLocation location = ResourceLocation.tryParse(enemy.entityId);
+            if (location == null) continue;
+
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(location).orElse(null);
             if (entityType == null) continue;
 
             for (int i = 0; i < enemy.qty; i++) {
