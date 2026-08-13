@@ -20,8 +20,13 @@ public class Config {
                     "minecraft:potatoes=3",
                     "minecraft:beetroots=1",
                     "minecraft:melon_stem=3",
-                    "minecraft:pumpkin_stem=3"
-            ), obj -> obj instanceof String);
+                    "minecraft:attached_melon_stem=7",
+                    "minecraft:pumpkin_stem=3",
+                    "minecraft:attached_pumpkin_stem=7",
+                    "farmersdelight:budding_tomatoes=3",
+                    "farmersdelight:onions=3",
+                    "farmersdelight:cabbages=3"
+                    ), obj -> obj instanceof String);
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LEVEL_THRESHOLDS = BUILDER
             .defineList("levelThresholds", Arrays.asList(0, 50, 100, 550, 1000, 5500, 10001), obj -> obj instanceof Integer);

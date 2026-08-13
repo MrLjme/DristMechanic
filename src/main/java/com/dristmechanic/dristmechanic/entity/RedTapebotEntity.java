@@ -1,7 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
-import com.dristmechanic.dristmechanic.init.ModEntities;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
@@ -20,7 +21,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.EnumSet;
+
 public class RedTapebotEntity extends Monster implements RangedAttackMob {
+
+    private BlockPos raidTarget;
+
     public RedTapebotEntity(EntityType<? extends Monster> entityType, Level level) {
         super(entityType, level);
     }
@@ -33,12 +39,21 @@ public class RedTapebotEntity extends Monster implements RangedAttackMob {
                 .add(Attributes.FOLLOW_RANGE, 16.0D);
     }
 
+    public BlockPos getRaidTarget() {
+        return raidTarget;
+    }
+
+    public void setRaidTarget(BlockPos raidTarget) {
+        this.raidTarget = raidTarget;
+    }
+
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 15, 15.0F));
-        this.goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
-        this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
+        this.goalSelector.addGoal(3, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        this.goalSelector.addGoal(4, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
@@ -71,5 +86,57 @@ public class RedTapebotEntity extends Monster implements RangedAttackMob {
     protected void tickDeath() {
         ++this.deathTime;
         if (this.deathTime >= 3) this.discard();
+    }
+
+    public static class MoveToRaidCenterGoal extends Goal {
+        private final RedTapebotEntity mob;
+        private final double speedModifier;
+
+        public MoveToRaidCenterGoal(RedTapebotEntity mob, double speedModifier) {
+            this.mob = mob;
+            this.speedModifier = speedModifier;
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE));
+        }
+
+        @Override
+        public boolean canUse() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target == null) return false;
+            return this.mob.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5) > 4.0;
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target == null) return false;
+            if (this.mob.distanceToSqr(target.getX() + 0.5, target.getY(), target.getZ() + 0.5) <= 4.0) {
+                this.mob.setRaidTarget(null);
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void start() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target != null) {
+                this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+            }
+        }
+
+        @Override
+        public void stop() {
+            this.mob.getNavigation().stop();
+        }
+
+        @Override
+        public void tick() {
+            BlockPos target = this.mob.getRaidTarget();
+            if (target != null) {
+                if (this.mob.getNavigation().isDone()) {
+                    this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
+                }
+            }
+        }
     }
 }

@@ -2,9 +2,7 @@ package com.dristmechanic.dristmechanic.handler;
 
 import com.dristmechanic.dristmechanic.Config;
 import com.dristmechanic.dristmechanic.Dristmechanic;
-import com.dristmechanic.dristmechanic.entity.FarmbotEntity;
-import com.dristmechanic.dristmechanic.entity.HaybotEntity;
-import com.dristmechanic.dristmechanic.entity.TotebotEntity;
+import com.dristmechanic.dristmechanic.entity.*;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
 import net.minecraft.ChatFormatting;
@@ -345,6 +343,10 @@ public class RaidManager {
                         farmbot.setRaidTarget(centerPos);
                     } else if (mob instanceof HaybotEntity haybot) {
                         haybot.setRaidTarget(centerPos);
+                    } else if (mob instanceof TapebotEntity tapebot) {
+                        tapebot.setRaidTarget(centerPos);
+                    } else if (mob instanceof RedTapebotEntity redTapebot) {
+                        redTapebot.setRaidTarget(centerPos);
                     }
                     level.addFreshEntity(mob);
                 }
