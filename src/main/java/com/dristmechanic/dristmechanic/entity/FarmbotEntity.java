@@ -73,7 +73,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     @NotNull
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 40.0D)
+                .add(Attributes.MAX_HEALTH, 75.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.45D)
                 .add(Attributes.ATTACK_DAMAGE, 10.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
@@ -101,7 +101,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
         boolean flag = super.hurt(damageSource, damage);
         if (!this.level().isClientSide) {
             ServerLevel serverLevel = (ServerLevel) this.level();
-            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 5, 0.1D, 0.5D, 0.1D, 0.15D);
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 5, 1.D, 2.0D, 1.0D, 0.2D);
         }
         return flag;
     }
@@ -111,8 +111,8 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
         super.die(damageSource);
         if (!this.level().isClientSide) {
             ServerLevel serverLevel = (ServerLevel) this.level();
-            serverLevel.sendParticles(Dristmechanic.FLASH.get(), this.getX(), this.getY(0.5D), this.getZ(), 25, 0.0D, 0.0D, 0.0D, 0.075D);
-            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 5, 0.0D, 0.0D, 0.0D, 0.15D);
+            serverLevel.sendParticles(Dristmechanic.SCRAP.get(), this.getX(), this.getY(0.3D), this.getZ(), 15, 1.0D, 2.0D, 1.0D, 0.35D);
+            this.level().explode(this, this.getX(), this.getY(0.5D), this.getZ(), 3.0F, Level.ExplosionInteraction.MOB);
         }
     }
 
