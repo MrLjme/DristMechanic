@@ -26,7 +26,7 @@ public class Config {
                     "farmersdelight:budding_tomatoes=3",
                     "farmersdelight:onions=3",
                     "farmersdelight:cabbages=3"
-                    ), obj -> obj instanceof String);
+            ), obj -> obj instanceof String);
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LEVEL_THRESHOLDS = BUILDER
             .defineList("levelThresholds", Arrays.asList(0, 50, 100, 550, 1000, 5500, 10001), obj -> obj instanceof Integer);
@@ -45,6 +45,15 @@ public class Config {
 
     public static final ModConfigSpec.IntValue SPAWN_INTERVAL_TICKS = BUILDER
             .defineInRange("spawnIntervalTicks", 40, 1, 1200);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> MOB_VALUES = BUILDER
+            .defineList("mobValues", Arrays.asList(
+                    "dristmechanic:totebot=2",
+                    "dristmechanic:haybot=5",
+                    "dristmechanic:tapebot=7",
+                    "dristmechanic:red_tapebot=10",
+                    "dristmechanic:farmbot=75"
+            ), obj -> obj instanceof String);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> GUARANTEED_SPAWNS = BUILDER
             .defineList("guaranteedSpawns", Arrays.asList(
@@ -66,17 +75,17 @@ public class Config {
                     "1:12:100:dristmechanic:totebot:1,dristmechanic:haybot:2",
                     "2:7:1:dristmechanic:totebot:1,dristmechanic:haybot:1",
                     "2:12:10:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
-                    "2:17:50:dristmechanic:totebot:1,dristmechanic:haybot:2,dristmechanic:totebot:1",
+                    "2:17:50:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
                     "2:19:100:dristmechanic:totebot:2,dristmechanic:haybot:3",
                     "3:7:1:dristmechanic:totebot:1,dristmechanic:haybot:1",
                     "3:12:10:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
-                    "3:17:50:dristmechanic:totebot:1,dristmechanic:haybot:2,dristmechanic:totebot:1",
+                    "3:17:50:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
                     "3:19:100:dristmechanic:totebot:2,dristmechanic:haybot:3",
                     "3:24:50:dristmechanic:totebot:2,dristmechanic:totebot:1",
                     "3:16:50:dristmechanic:totebot:3,dristmechanic:tapebot:1,dristmechanic:tapebot:1",
                     "4:7:1:dristmechanic:totebot:1,dristmechanic:haybot:1",
                     "4:12:10:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
-                    "4:17:50:dristmechanic:totebot:1,dristmechanic:haybot:2,dristmechanic:totebot:1",
+                    "4:17:50:dristmechanic:totebot:1,dristmechanic:haybot:1,dristmechanic:totebot:1",
                     "4:19:100:dristmechanic:totebot:2,dristmechanic:haybot:3",
                     "4:19:50:dristmechanic:totebot:2,dristmechanic:totebot:1",
                     "4:19:50:dristmechanic:totebot:2,dristmechanic:totebot:1",

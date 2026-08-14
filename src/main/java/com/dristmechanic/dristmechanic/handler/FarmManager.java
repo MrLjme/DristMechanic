@@ -85,7 +85,7 @@ public class FarmManager {
                 }
             }
 
-            if (currentTick - maxLastChange >= 60) { // Стабильна 3 секунды (60 тиков)
+            if (currentTick - maxLastChange >= 60) {
                 Vec3 center = calculateExactCenter(level, connected);
                 if (center != null) {
                     int unraidedValue = Math.max(0, totalValue - totalRaidedValue);

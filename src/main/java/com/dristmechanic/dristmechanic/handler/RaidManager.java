@@ -4,7 +4,6 @@ import com.dristmechanic.dristmechanic.Config;
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import com.dristmechanic.dristmechanic.entity.*;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
-import com.dristmechanic.dristmechanic.init.ModEntities;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -23,6 +22,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -39,15 +39,23 @@ public class RaidManager {
     private static final String NBT_CENTER_X = "DristRaidCenterX";
     private static final String NBT_CENTER_Y = "DristRaidCenterY";
     private static final String NBT_CENTER_Z = "DristRaidCenterZ";
+    private static final String NBT_RAIDER_VALUE = "DristRaiderValue";
     private static final String TAG_FARM_CENTER = "drist_farm_center";
+    private static final String TAG_RAIDER = "drist_raider";
     private static final long RAID_DELAY_TICKS = 1200L;
     private static final Map<ServerLevel, Set<UUID>> trackedStandsByLevel = new ConcurrentHashMap<>();
     private static final Map<ServerLevel, List<RaidSpawnTask>> activeSpawnTasks = new ConcurrentHashMap<>();
+    private static final Map<ServerLevel, Integer> raidRemainingByLevel = new ConcurrentHashMap<>();
+    private static volatile List<? extends String> lastMobList = null;
+    private static volatile Map<String, Integer> mobValueCache = new HashMap<>();
+
+    public record HudData(boolean isActive, int currentValue, int maxValue) {}
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
         trackedStandsByLevel.clear();
         activeSpawnTasks.clear();
+        raidRemainingByLevel.clear();
     }
 
     @SubscribeEvent
@@ -55,6 +63,7 @@ public class RaidManager {
         if (event.getLevel() instanceof ServerLevel sl) {
             trackedStandsByLevel.remove(sl);
             activeSpawnTasks.remove(sl);
+            raidRemainingByLevel.remove(sl);
         }
     }
 
@@ -68,11 +77,128 @@ public class RaidManager {
     }
 
     @SubscribeEvent
+    public static void onLivingDeath(LivingDeathEvent event) {
+        Entity entity = event.getEntity();
+        if (entity.level().isClientSide() || !entity.getTags().contains(TAG_RAIDER)) return;
+        if (!(entity.level() instanceof ServerLevel level)) return;
+
+        int value = entity.getPersistentData().getInt(NBT_RAIDER_VALUE);
+        Integer remaining = raidRemainingByLevel.get(level);
+        if (remaining == null) return;
+
+        int newVal = Math.max(0, remaining - value);
+        raidRemainingByLevel.put(level, newVal);
+
+        if (newVal <= 0 || !hasLivingRaiders(level)) {
+            raidRemainingByLevel.remove(level);
+            activeSpawnTasks.remove(level);
+            notifyRaidEnd(level);
+        }
+    }
+
+    private static boolean hasLivingRaiders(ServerLevel level) {
+        for (Entity e : level.getAllEntities()) {
+            if (e.isAlive() && e.getTags().contains(TAG_RAIDER)) {
+                return true;
+            }
+        }
+        List<RaidSpawnTask> tasks = activeSpawnTasks.get(level);
+        return tasks != null && !tasks.isEmpty();
+    }
+
+    @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         for (ServerLevel level : event.getServer().getAllLevels()) {
             tickRaids(level);
             tickSpawnTasks(level);
+            checkRaidCompletion(level);
         }
+    }
+
+    private static void checkRaidCompletion(ServerLevel level) {
+        Integer remaining = raidRemainingByLevel.get(level);
+        if (remaining == null || remaining <= 0) return;
+
+        List<RaidSpawnTask> tasks = activeSpawnTasks.get(level);
+        boolean spawningActive = tasks != null && !tasks.isEmpty();
+
+        if (!spawningActive && !hasLivingRaiders(level)) {
+            raidRemainingByLevel.remove(level);
+            notifyRaidEnd(level);
+        }
+    }
+
+    private static int getMobValue(EntityType<?> type) {
+        List<? extends String> list = Config.MOB_VALUES.get();
+        if (list != lastMobList) {
+            Map<String, Integer> m = new HashMap<>();
+            for (String entry : list) {
+                String[] parts = entry.split("=");
+                if (parts.length == 2) {
+                    try {
+                        m.put(parts[0].trim(), Integer.parseInt(parts[1].trim()));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+            mobValueCache = m;
+            lastMobList = list;
+        }
+        return mobValueCache.getOrDefault(BuiltInRegistries.ENTITY_TYPE.getKey(type).toString(), 0);
+    }
+
+    public static boolean isPlantingBlocked(ServerLevel level, ChunkPos cp) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                ChunkPos n = new ChunkPos(cp.x + dx, cp.z + dz);
+                FarmManager.FarmData farm = FarmManager.findConnectedFarm(level, n);
+                if (!farm.chunks().isEmpty() && farm.center() != null && isRaidPendingNear(level, farm.center())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRaidPendingNear(ServerLevel level, Vec3 center) {
+        double distSq = 16.0 * 16.0;
+
+        Set<UUID> tracked = trackedStandsByLevel.get(level);
+        if (tracked != null) {
+            for (UUID uuid : tracked) {
+                Entity e = level.getEntity(uuid);
+                if (e instanceof ArmorStand as && as.isAlive() && hasRaidScheduled(as)) {
+                    if (as.distanceToSqr(center.x, center.y, center.z) < distSq) return true;
+                }
+            }
+        }
+
+        List<RaidSpawnTask> tasks = activeSpawnTasks.get(level);
+        if (tasks != null) {
+            for (RaidSpawnTask t : tasks) {
+                if (t.center != null && t.center.distanceToSqr(center.x, center.y, center.z) < distSq) return true;
+            }
+        }
+
+        return raidRemainingByLevel.getOrDefault(level, 0) > 0;
+    }
+
+    public static HudData getNearestRaidData(ServerLevel level, Vec3 pos) {
+        Integer remaining = raidRemainingByLevel.get(level);
+        boolean raidActive = (remaining != null && remaining > 0) || !activeSpawnTasks.getOrDefault(level, Collections.emptyList()).isEmpty();
+        int currentValue = 0;
+        int maxValue = Config.MAX_CROP_VALUE.get();
+
+        BlockPos blockPos = new BlockPos(Mth.floor(pos.x), Mth.floor(pos.y), Mth.floor(pos.z));
+        FarmManager.FarmData farm = FarmManager.findNearestFarm(level, blockPos, 16);
+        if (farm != null && !farm.isEmpty()) {
+            currentValue = farm.totalValue();
+        }
+
+        if (raidActive && remaining != null) {
+            currentValue = remaining;
+        }
+
+        return new HudData(raidActive, currentValue, maxValue);
     }
 
     private static void tickSpawnTasks(ServerLevel level) {
@@ -314,6 +440,7 @@ public class RaidManager {
             task.spawnIndex = 0;
             task.nextSpawnTime = level.getGameTime();
             activeSpawnTasks.computeIfAbsent(level, k -> new ArrayList<>()).add(task);
+            raidRemainingByLevel.merge(level, farmValue, Integer::sum);
             notifyRaidStart(level, totalMobs);
         }
     }
@@ -337,6 +464,11 @@ public class RaidManager {
                 if (mob != null) {
                     mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
                     mob.setPersistenceRequired();
+                    int value = getMobValue(entityType);
+                    if (value > 0) {
+                        mob.addTag(TAG_RAIDER);
+                        mob.getPersistentData().putInt(NBT_RAIDER_VALUE, value);
+                    }
                     if (mob instanceof TotebotEntity totebot) {
                         totebot.setRaidTarget(centerPos);
                     } else if (mob instanceof FarmbotEntity farmbot) {
@@ -628,6 +760,11 @@ public class RaidManager {
 
     private static void notifyRaidStart(ServerLevel level, int mobCount) {
         Component msg = Component.literal("НЕАВТОРИЗОВАННОЕ ЗЕМЛЕДЕЛИЕ ОБНАРУЖЕНО! РЕЙД НАЧАЛСЯ (" + mobCount + " мобов)").withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
+        level.getServer().getPlayerList().broadcastSystemMessage(msg, true);
+    }
+
+    private static void notifyRaidEnd(ServerLevel level) {
+        Component msg = Component.literal("РЕЙД ОТБИТ").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD);
         level.getServer().getPlayerList().broadcastSystemMessage(msg, true);
     }
 

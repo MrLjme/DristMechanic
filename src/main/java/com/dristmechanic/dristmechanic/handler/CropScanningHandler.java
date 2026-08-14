@@ -9,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -86,6 +87,18 @@ public class CropScanningHandler {
         if (!e.getLevel().isClientSide()) for (BlockPos pos : e.getAffectedBlocks()) markDirty((ServerLevel) e.getLevel(), pos);
     }
 
+    @SubscribeEvent
+    public static void onCropPlaceBlocked(BlockEvent.EntityPlaceEvent e) {
+        if (e.getLevel().isClientSide()) return;
+        if (getCropValue(e.getPlacedBlock()) <= 0) return;
+        if (e.getLevel() instanceof ServerLevel level && RaidManager.isPlantingBlocked(level, new ChunkPos(e.getPos()))) {
+            e.setCanceled(true);
+            if (e.getEntity() instanceof ServerPlayer player) {
+                player.containerMenu.sendAllDataToRemote();
+            }
+        }
+    }
+
     public static void markDirty(ServerLevel level, BlockPos pos) {
         if (dirtyChunks.put(new ChunkPos(pos), level) == null) hasDirtyChunks = true;
     }
@@ -148,7 +161,6 @@ public class CropScanningHandler {
             chunk.setData(ModAttachments.CROP_BLOCK_COUNT.get(), cropCount);
             chunk.setData(ModAttachments.LAST_CHANGE_TICK.get(), level.getGameTime());
 
-            // Если общая ценность упала, уменьшаем "зарейженную" ценность
             int currentRaided = chunk.getData(ModAttachments.RAIDED_CROP_VALUE.get());
             if (currentCropCount < currentRaided) {
                 chunk.setData(ModAttachments.RAIDED_CROP_VALUE.get(), currentCropCount);
