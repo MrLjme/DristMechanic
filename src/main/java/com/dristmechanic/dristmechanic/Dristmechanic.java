@@ -21,8 +21,7 @@ import com.dristmechanic.dristmechanic.entity.TapebotEntity;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
-import com.dristmechanic.dristmechanic.network.ClientPayloadHandler;
-import com.dristmechanic.dristmechanic.network.RaidHudPayload;
+import com.dristmechanic.dristmechanic.network.ModNetworking;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.SimpleParticleType;
@@ -43,8 +42,6 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -92,11 +89,6 @@ public class Dristmechanic {
         modEventBus.addListener(this::addCreative);
 
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
-
-        modEventBus.addListener((RegisterPayloadHandlersEvent event) -> {
-            final PayloadRegistrar registrar = event.registrar(Dristmechanic.MODID).versioned("1.0");
-            registrar.playToClient(RaidHudPayload.TYPE, RaidHudPayload.STREAM_CODEC, ClientPayloadHandler::handleRaidHud);
-        });
     }
 
     private void addCreative(BuildCreativeModeTabContentsEvent event) {

@@ -20,6 +20,7 @@ public class RaidHUD {
     private static boolean isActive = false;
     private static int currentValue = 0;
     private static int maxValue = 100000;
+    private static boolean raidActive = false;
 
     private static final int YELLOW_MAX = 100;
     private static final int ORANGE_MAX = 1000;
@@ -37,10 +38,11 @@ public class RaidHUD {
     private static final int COLOR_PURPLE_FRAME = 0xFF9C8FE0;
     private static final int COLOR_FRAME = 0xFF9E1B1B;
 
-    public static void updateData(boolean active, int current, int max) {
+    public static void updateData(boolean active, int current, int max, boolean raid) {
         isActive = active;
         currentValue = current;
         maxValue = max;
+        raidActive = raid;
     }
 
     @SubscribeEvent
@@ -96,6 +98,8 @@ public class RaidHUD {
         Component text;
         if (purple) {
             text = Component.literal("THREAT: " + currentValue + "/" + PURPLE_MAX).withStyle(ChatFormatting.DARK_PURPLE);
+        } else if (raidActive) {
+            text = Component.literal("RAID: " + currentValue).withStyle(ChatFormatting.RED);
         } else if (isActive) {
             text = Component.literal("LICENSE BREACH: " + currentValue).withStyle(ChatFormatting.RED);
         } else {
