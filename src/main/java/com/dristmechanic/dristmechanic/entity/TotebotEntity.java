@@ -3,6 +3,7 @@ package com.dristmechanic.dristmechanic.entity;
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -28,40 +29,50 @@ import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.*;
 import software.bernie.geckolib.util.GeckoLibUtil;
-
 import java.util.EnumSet;
 
 public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacker {
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
 
     private BlockPos raidTarget;
 
-    // Interface state implementation
     private int stuckTicks = 0;
+
     private Vec3 lastPos = null;
+
     private int attackTicks = 0;
+
     private BlockPos breakingBlock = null;
 
     @Override
     public int getStuckTicks() { return stuckTicks; }
+
     @Override
     public void setStuckTicks(int ticks) { this.stuckTicks = ticks; }
+
     @Override
     public Vec3 getLastPos() { return lastPos; }
+
     @Override
     public void setLastPos(Vec3 pos) { this.lastPos = pos; }
+
     @Override
     public int getAttackTicks() { return attackTicks; }
+
     @Override
     public void setAttackTicks(int ticks) { this.attackTicks = ticks; }
+
     @Override
     public BlockPos getBreakingBlock() { return breakingBlock; }
+
     @Override
     public void setBreakingBlock(BlockPos pos) { this.breakingBlock = pos; }
 
     public BlockPos getRaidTarget() { return raidTarget; }
+
     public void setRaidTarget(BlockPos raidTarget) { this.raidTarget = raidTarget; }
 
     public TotebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -127,6 +138,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     public AnimatableInstanceCache getAnimatableInstanceCache() { return this.cache; }
 
     public boolean isAttacking() { return this.entityData.get(ATTACKING); }
+
     public void setAttacking(boolean attacking) { this.entityData.set(ATTACKING, attacking); }
 
     @Override
@@ -141,10 +153,17 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
     }
 
-    @Override public void setAttackingState(boolean attacking) { this.setAttacking(attacking); }
-    @Override public boolean isAttackingState() { return this.isAttacking(); }
-    @Override public int getAttackAnimationLength() { return 14; }
-    @Override public int getAttackImpactFrame() { return 13; }
+    @Override
+    public void setAttackingState(boolean attacking) { this.setAttacking(attacking); }
+
+    @Override
+    public boolean isAttackingState() { return this.isAttacking(); }
+
+    @Override
+    public int getAttackAnimationLength() { return 14; }
+
+    @Override
+    public int getAttackImpactFrame() { return 13; }
 
     @Override
     public boolean hurt(DamageSource damageSource, float damage) {
@@ -170,6 +189,28 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     protected void tickDeath() {
         ++this.deathTime;
         if (this.deathTime >= 3) this.discard();
+    }
+
+    @Override
+    public void addAdditionalSaveData(CompoundTag tag) {
+        super.addAdditionalSaveData(tag);
+        if (this.raidTarget != null) {
+            tag.putInt("RaidTargetX", this.raidTarget.getX());
+            tag.putInt("RaidTargetY", this.raidTarget.getY());
+            tag.putInt("RaidTargetZ", this.raidTarget.getZ());
+        }
+    }
+
+    @Override
+    public void readAdditionalSaveData(CompoundTag tag) {
+        super.readAdditionalSaveData(tag);
+        if (tag.contains("RaidTargetX")) {
+            this.raidTarget = new BlockPos(
+                    tag.getInt("RaidTargetX"),
+                    tag.getInt("RaidTargetY"),
+                    tag.getInt("RaidTargetZ")
+            );
+        }
     }
 
     public static class MoveToRaidCenterGoal extends Goal {
@@ -205,7 +246,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
             BlockPos target = this.mob.getRaidTarget();
             if (target != null) {
                 this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
-                this.mob.setAggressive(true); // Триггерим анимацию бега
+                this.mob.setAggressive(true);
                 this.mob.resetStuckDetection();
             }
         }
@@ -225,13 +266,11 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         public void tick() {
             BlockPos target = this.mob.getRaidTarget();
             if (target != null) {
-                // Глобальная проверка препятствий и анимация пробивания
                 if (this.mob.getBreakingBlock() != null) {
                     this.mob.tickBreakingBlock(this.mob, true);
                 } else {
                     this.mob.tickStuckDetection(this.mob, Vec3.atBottomCenterOf(target), true);
                 }
-
                 if (this.mob.getNavigation().isDone()) {
                     this.mob.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, this.speedModifier);
                 }

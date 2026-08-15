@@ -14,7 +14,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Level.class)
 public abstract class ServerLevelMixin {
-
     @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", at = @At("HEAD"))
     private void dristmechanic$onSetBlock4(BlockPos pos, BlockState newState, int flags, int recursionLeft, CallbackInfoReturnable<Boolean> cir) {
         Level level = (Level) (Object) this;
@@ -28,14 +27,13 @@ public abstract class ServerLevelMixin {
 
         if (level instanceof ServerLevel serverLevel) {
             LevelChunk chunk = serverLevel.getChunkAt(pos);
-            int currentCount = chunk.getData(ModAttachments.CROP_COUNT);
-
+            int currentCount = chunk.getData(ModAttachments.CROP_COUNT.get());
             if (wasCrop) {
-                chunk.setData(ModAttachments.CROP_COUNT, Math.max(0, currentCount - 1));
+                chunk.setData(ModAttachments.CROP_COUNT.get(), Math.max(0, currentCount - 1));
             } else {
-                chunk.setData(ModAttachments.CROP_COUNT, currentCount + 1);
+                chunk.setData(ModAttachments.CROP_COUNT.get(), currentCount + 1);
             }
-            chunk.setUnsaved(true); // Говорим чанку сохраниться на диск
+            chunk.setUnsaved(true);
         }
     }
 }

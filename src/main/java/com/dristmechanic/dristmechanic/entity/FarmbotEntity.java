@@ -2,6 +2,7 @@ package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -21,10 +22,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-
 import java.util.EnumSet;
 
 public class FarmbotEntity extends Monster implements AnimatedAttacker {
+
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
     private int attackTicks = 0;
@@ -34,30 +35,42 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
 
     @Override
     public int getStuckTicks() { return stuckTicks; }
+
     @Override
     public void setStuckTicks(int ticks) { this.stuckTicks = ticks; }
+
     @Override
     public Vec3 getLastPos() { return lastPos; }
+
     @Override
     public void setLastPos(Vec3 pos) { this.lastPos = pos; }
+
     @Override
     public int getAttackTicks() { return attackTicks; }
+
     @Override
     public void setAttackTicks(int ticks) { this.attackTicks = ticks; }
+
     @Override
     public BlockPos getBreakingBlock() { return breakingBlock; }
+
     @Override
     public void setBreakingBlock(BlockPos pos) { this.breakingBlock = pos; }
+
     @Override
     public void setAttackingState(boolean attacking) { this.isAttackingState = attacking; }
+
     @Override
     public boolean isAttackingState() { return this.isAttackingState; }
+
     @Override
     public int getAttackAnimationLength() { return 14; }
+
     @Override
     public int getAttackImpactFrame() { return 13; }
 
     public BlockPos getRaidTarget() { return raidTarget; }
+
     public void setRaidTarget(BlockPos raidTarget) { this.raidTarget = raidTarget; }
 
     public FarmbotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -98,6 +111,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
         if (damageSource.isDirect() && damageSource.getEntity() instanceof LivingEntity) {
             return false;
         }
+
         boolean flag = super.hurt(damageSource, damage);
         if (!this.level().isClientSide) {
             ServerLevel serverLevel = (ServerLevel) this.level();
@@ -120,6 +134,28 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     protected void tickDeath() {
         ++this.deathTime;
         if (this.deathTime >= 3) this.discard();
+    }
+
+    @Override
+    public void addAdditionalSaveData(CompoundTag tag) {
+        super.addAdditionalSaveData(tag);
+        if (this.raidTarget != null) {
+            tag.putInt("RaidTargetX", this.raidTarget.getX());
+            tag.putInt("RaidTargetY", this.raidTarget.getY());
+            tag.putInt("RaidTargetZ", this.raidTarget.getZ());
+        }
+    }
+
+    @Override
+    public void readAdditionalSaveData(CompoundTag tag) {
+        super.readAdditionalSaveData(tag);
+        if (tag.contains("RaidTargetX")) {
+            this.raidTarget = new BlockPos(
+                    tag.getInt("RaidTargetX"),
+                    tag.getInt("RaidTargetY"),
+                    tag.getInt("RaidTargetZ")
+            );
+        }
     }
 
     public static class MoveToRaidCenterGoal extends Goal {

@@ -32,12 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class CropScanningHandler {
-
     private static final Map<ChunkPos, ServerLevel> dirtyChunks = new ConcurrentHashMap<>();
     private static volatile boolean hasDirtyChunks = false;
     private static volatile List<? extends String> lastConfigList = null;
     private static volatile Object2IntMap<BlockState> cachedValues = new Object2IntOpenHashMap<>();
-
     static { cachedValues.defaultReturnValue(0); }
 
     public static int getCropValue(BlockState state) { return cachedValues.getInt(state); }
@@ -70,20 +68,31 @@ public class CropScanningHandler {
         return chunk instanceof LevelChunk lc ? lc : null;
     }
 
-    @SubscribeEvent public static void onConfigReload(ModConfigEvent event) { lastConfigList = null; }
-    @SubscribeEvent public static void onChunkLoad(ChunkEvent.Load event) {
+    @SubscribeEvent
+    public static void onConfigReload(ModConfigEvent event) { lastConfigList = null; }
+
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
         if (!event.getLevel().isClientSide() && event.getChunk() instanceof LevelChunk lc) scanChunk(lc);
     }
-    @SubscribeEvent public static void onBlockPlace(BlockEvent.EntityPlaceEvent e) {
+
+    @SubscribeEvent
+    public static void onBlockPlace(BlockEvent.EntityPlaceEvent e) {
         if (!e.getLevel().isClientSide() && getCropValue(e.getPlacedBlock()) > 0) markDirty((ServerLevel) e.getLevel(), e.getPos());
     }
-    @SubscribeEvent public static void onBlockBreak(BlockEvent.BreakEvent e) {
+
+    @SubscribeEvent
+    public static void onBlockBreak(BlockEvent.BreakEvent e) {
         if (!e.getLevel().isClientSide() && getCropValue(e.getState()) > 0) markDirty((ServerLevel) e.getLevel(), e.getPos());
     }
-    @SubscribeEvent public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent e) {
+
+    @SubscribeEvent
+    public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent e) {
         if (!e.getLevel().isClientSide()) markDirty((ServerLevel) e.getLevel(), e.getPos());
     }
-    @SubscribeEvent public static void onExplosionDetonate(ExplosionEvent.Detonate e) {
+
+    @SubscribeEvent
+    public static void onExplosionDetonate(ExplosionEvent.Detonate e) {
         if (!e.getLevel().isClientSide()) for (BlockPos pos : e.getAffectedBlocks()) markDirty((ServerLevel) e.getLevel(), pos);
     }
 
@@ -120,7 +129,6 @@ public class CropScanningHandler {
     private static void scanChunk(LevelChunk chunk) {
         ServerLevel level = (ServerLevel) chunk.getLevel();
         List<? extends String> currentList = Config.CROP_VALUES.get();
-
         if (currentList != lastConfigList) {
             rebuildCache(currentList);
             lastConfigList = currentList;
@@ -141,8 +149,8 @@ public class CropScanningHandler {
             });
 
             if (sectionValue[0] == 0) continue;
-            actualValue += sectionValue[0];
 
+            actualValue += sectionValue[0];
             int baseY = (i << 4) + level.getMinBuildHeight();
             for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) {
                 if (cachedValues.getInt(section.getBlockState(x, y, z)) > 0) {
@@ -152,8 +160,9 @@ public class CropScanningHandler {
         }
 
         int currentCropCount = (int) Math.min(actualValue, Integer.MAX_VALUE);
+        int oldCropCount = chunk.getData(ModAttachments.CROP_COUNT.get());
 
-        if (currentCropCount != chunk.getData(ModAttachments.CROP_COUNT.get())) {
+        if (currentCropCount != oldCropCount) {
             chunk.setData(ModAttachments.CROP_COUNT.get(), currentCropCount);
             chunk.setData(ModAttachments.SUM_X.get(), sumX);
             chunk.setData(ModAttachments.SUM_Y.get(), sumY);
@@ -164,6 +173,10 @@ public class CropScanningHandler {
             int currentRaided = chunk.getData(ModAttachments.RAIDED_CROP_VALUE.get());
             if (currentCropCount < currentRaided) {
                 chunk.setData(ModAttachments.RAIDED_CROP_VALUE.get(), currentCropCount);
+                chunk.setData(ModAttachments.RAIDED_SUM_X.get(), sumX);
+                chunk.setData(ModAttachments.RAIDED_SUM_Y.get(), sumY);
+                chunk.setData(ModAttachments.RAIDED_SUM_Z.get(), sumZ);
+                chunk.setData(ModAttachments.RAIDED_CROP_COUNT.get(), cropCount);
             }
 
             chunk.setUnsaved(true);

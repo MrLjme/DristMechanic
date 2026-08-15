@@ -2,6 +2,7 @@ package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -20,10 +21,10 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-
 import java.util.EnumSet;
 
 public class TapebotEntity extends Monster implements RangedAttackMob {
+
     private BlockPos raidTarget;
 
     public TapebotEntity(EntityType<? extends Monster> entityType, Level level) {
@@ -47,7 +48,6 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
 
     @Override
     protected void registerGoals() {
-
         this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new RangedAttackGoal(this, 1.0D, 20, 20.0F));
@@ -86,6 +86,28 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
     protected void tickDeath() {
         ++this.deathTime;
         if (this.deathTime >= 3) this.discard();
+    }
+
+    @Override
+    public void addAdditionalSaveData(CompoundTag tag) {
+        super.addAdditionalSaveData(tag);
+        if (this.raidTarget != null) {
+            tag.putInt("RaidTargetX", this.raidTarget.getX());
+            tag.putInt("RaidTargetY", this.raidTarget.getY());
+            tag.putInt("RaidTargetZ", this.raidTarget.getZ());
+        }
+    }
+
+    @Override
+    public void readAdditionalSaveData(CompoundTag tag) {
+        super.readAdditionalSaveData(tag);
+        if (tag.contains("RaidTargetX")) {
+            this.raidTarget = new BlockPos(
+                    tag.getInt("RaidTargetX"),
+                    tag.getInt("RaidTargetY"),
+                    tag.getInt("RaidTargetZ")
+            );
+        }
     }
 
     public static class MoveToRaidCenterGoal extends Goal {

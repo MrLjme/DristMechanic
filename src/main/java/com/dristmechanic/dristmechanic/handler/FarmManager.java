@@ -68,31 +68,47 @@ public class FarmManager {
 
         for (ChunkPos cp : farmChunks) {
             if (visited.contains(cp.toLong())) continue;
-
             List<ChunkPos> connected = findConnectedComponent(cp, validChunksLong, visited);
+
             long maxLastChange = 0;
             int totalValue = 0;
             int totalRaidedValue = 0;
+            long totalNewSumX = 0, totalNewSumY = 0, totalNewSumZ = 0, totalNewCropCount = 0;
 
             for (ChunkPos c : connected) {
                 LevelChunk chunk = CropScanningHandler.getChunkSafe(level, c.x, c.z);
                 if (chunk != null) {
                     Long lastChange = chunk.getData(ModAttachments.LAST_CHANGE_TICK.get());
                     if (lastChange != null && lastChange > maxLastChange) maxLastChange = lastChange;
-
                     totalValue += chunk.getData(ModAttachments.CROP_COUNT.get());
                     totalRaidedValue += chunk.getData(ModAttachments.RAIDED_CROP_VALUE.get());
+                    totalNewSumX += chunk.getData(ModAttachments.NEW_SUM_X.get());
+                    totalNewSumY += chunk.getData(ModAttachments.NEW_SUM_Y.get());
+                    totalNewSumZ += chunk.getData(ModAttachments.NEW_SUM_Z.get());
+                    totalNewCropCount += chunk.getData(ModAttachments.NEW_CROP_BLOCK_COUNT.get());
                 }
             }
 
             if (currentTick - maxLastChange >= 60) {
-                Vec3 center = calculateExactCenter(level, connected);
-                if (center != null) {
-                    int unraidedValue = Math.max(0, totalValue - totalRaidedValue);
-                    stableFarms.add(new FarmData(connected, totalValue, unraidedValue, center, findEdgeChunks(connected)));
+                int unraidedValue = Math.max(0, totalValue - totalRaidedValue);
+
+                Vec3 center;
+                if (totalNewCropCount > 0) {
+                    center = new Vec3(
+                            (totalNewSumX / (double) totalNewCropCount) + 0.5,
+                            (totalNewSumY / (double) totalNewCropCount) + 0.5,
+                            (totalNewSumZ / (double) totalNewCropCount) + 0.5
+                    );
+                } else {
+                    center = calculateExactCenter(level, connected);
+                }
+
+                if (center != null && unraidedValue > 0) {
+                    stableFarms.add(new FarmData(connected, unraidedValue, unraidedValue, center, findEdgeChunks(connected)));
                 }
             }
         }
+
         RaidManager.updateHolograms(level, stableFarms);
     }
 
@@ -122,6 +138,7 @@ public class FarmManager {
 
     private static Vec3 calculateExactCenter(ServerLevel level, List<ChunkPos> chunks) {
         long tX = 0, tY = 0, tZ = 0, tC = 0;
+        long rX = 0, rY = 0, rZ = 0, rC = 0;
         for (ChunkPos cp : chunks) {
             LevelChunk chunk = CropScanningHandler.getChunkSafe(level, cp.x, cp.z);
             if (chunk != null) {
@@ -129,9 +146,17 @@ public class FarmManager {
                 tY += chunk.getData(ModAttachments.SUM_Y.get());
                 tZ += chunk.getData(ModAttachments.SUM_Z.get());
                 tC += chunk.getData(ModAttachments.CROP_BLOCK_COUNT.get());
+                rX += chunk.getData(ModAttachments.RAIDED_SUM_X.get());
+                rY += chunk.getData(ModAttachments.RAIDED_SUM_Y.get());
+                rZ += chunk.getData(ModAttachments.RAIDED_SUM_Z.get());
+                rC += chunk.getData(ModAttachments.RAIDED_CROP_COUNT.get());
             }
         }
-        return tC == 0 ? null : new Vec3((tX / (double) tC) + 0.5, (tY / (double) tC) + 0.5, (tZ / (double) tC) + 0.5);
+        long newX = tX - rX;
+        long newY = tY - rY;
+        long newZ = tZ - rZ;
+        long newC = tC - rC;
+        return newC == 0 ? null : new Vec3((newX / (double) newC) + 0.5, (newY / (double) newC) + 0.5, (newZ / (double) newC) + 0.5);
     }
 
     private static List<ChunkPos> findEdgeChunks(List<ChunkPos> farmChunks) {
