@@ -16,12 +16,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class ServerLevelMixin {
     private static final Logger LOGGER = LoggerFactory.getLogger(Dristmechanic.MODID);
 
-    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", at = @At("HEAD"))
-    private void dristmechanic$onSetBlock(BlockPos pos, BlockState newState, int flags, int recursionLeft, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(
+            method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z",
+            at = @At("HEAD")
+    )
+    private void dristmechanic$onSetBlock(
+            BlockPos pos, BlockState newState, int flags, int recursionLeft,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
         Level level = (Level) (Object) this;
         if (!level.isClientSide()) {
-            LOGGER.info("[MIXIN] setBlock called at {}, block: {}", pos, newState.getBlock());
-            CropScanningHandler.onBlockChanged(level, pos, newState);
+            BlockState oldState = level.getBlockState(pos);
+            LOGGER.info("[MIXIN] setBlock at {}, old: {} -> new: {}", pos, oldState.getBlock(), newState.getBlock());
+            CropScanningHandler.onBlockChanged(level, pos, oldState, newState);
         }
     }
 }

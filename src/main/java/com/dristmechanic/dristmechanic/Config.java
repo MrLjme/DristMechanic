@@ -39,7 +39,7 @@ public class Config {
 
     public static final ModConfigSpec.IntValue LOCKDOWN_RADIUS = BUILDER
             .comment("Radius in chunks around the farm where planting is blocked during raid")
-            .defineInRange("lockdownRadius", 2, 0, 10);
+            .defineInRange("lockdownRadius", 1, 0, 10);
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LEVEL_THRESHOLDS = BUILDER
             .defineList("levelThresholds", Arrays.asList(0, 50, 100, 550, 1000, 5500, 10001), obj -> obj instanceof Integer);

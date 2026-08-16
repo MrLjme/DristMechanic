@@ -115,17 +115,36 @@ public class CropScanningHandler {
         }
     }
 
-    public static void onBlockChanged(net.minecraft.world.level.Level level, BlockPos pos, BlockState newState) {
+    public static void onBlockChanged(
+            net.minecraft.world.level.Level level,
+            BlockPos pos,
+            BlockState oldState,
+            BlockState newState
+    ) {
         if (level.isClientSide()) return;
 
         ServerLevel serverLevel = (ServerLevel) level;
-        int value = getCropValue(newState);
+        int oldValue = getCropValue(oldState);
+        int newValue = getCropValue(newState);
 
-        LOGGER.info("[BLOCK_CHANGED] Block at {} changed to {}, value: {}", pos, newState.getBlock(), value);
+        LOGGER.info("[BLOCK_CHANGED] {} -> {} at {}, oldVal: {}, newVal: {}",
+                oldState.getBlock(), newState.getBlock(), pos, oldValue, newValue);
 
-        if (value > 0) {
-            LOGGER.info("[BLOCK_CHANGED] Calling FarmManager.onCropPlanted");
+        // === ГЛАВНАЯ ПРОВЕРКА: если культура просто выросла (тот же блок) — игнорируем ===
+        if (oldValue > 0 && oldState.getBlock() == newState.getBlock()) {
+            LOGGER.info("[BLOCK_CHANGED] Crop growth detected, ignoring");
+            return;
+        }
+
+        if (newValue > 0) {
+            // Реальная посадка (было не-культура/воздух, стало культура)
+            LOGGER.info("[BLOCK_CHANGED] New crop planted, calling FarmManager.onCropPlanted");
             FarmManager.onCropPlanted(serverLevel, pos);
+        } else if (oldValue > 0 && newValue == 0) {
+            // Блок был культурой, а стал воздухом/чем-то другим
+            // (на всякий случай, если BreakEvent не отловил)
+            LOGGER.info("[BLOCK_CHANGED] Crop removed, calling FarmManager.onCropRemoved");
+            FarmManager.onCropRemoved(serverLevel, pos);
         }
     }
 

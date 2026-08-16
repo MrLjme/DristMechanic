@@ -32,6 +32,7 @@ public class FarmManager {
     private static MinecraftServer serverInstance = null;
     private static final Map<ServerLevel, Map<ChunkPos, FarmData>> farmsByLevel = new ConcurrentHashMap<>();
     private final Set<BlockPos> spentCrops = new HashSet<>();
+
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent e) {
         serverInstance = e.getServer();
@@ -101,6 +102,7 @@ public class FarmManager {
                 FarmData farm = farms.get(neighbor);
                 if (farm != null) {
                     farms.put(startChunk, farm);
+                    farm.addChunk(startChunk); // <-- добавляем чанк к ферме
                     return farm;
                 }
             }
@@ -108,6 +110,7 @@ public class FarmManager {
 
         LOGGER.info("[FARM_MANAGER] Creating new farm at chunk {}", startChunk);
         FarmData newFarm = new FarmData(startChunk);
+        newFarm.addChunk(startChunk); // <-- добавляем при создании
         farms.put(startChunk, newFarm);
         return newFarm;
     }
@@ -138,8 +141,13 @@ public class FarmManager {
         }
     }
 
+    public static Map<ChunkPos, FarmData> getFarmsForLevel(ServerLevel level) {
+        return farmsByLevel.get(level);
+    }
+
     public static class FarmData {
         private final ChunkPos mainChunk;
+        private final Set<ChunkPos> chunks = new HashSet<>(); // <-- ВСЕ чанки фермы
         private final Map<BlockPos, Long> rawCrops = new HashMap<>();
         private final Set<BlockPos> spentCrops = new HashSet<>();
         private int accumulatedValue = 0;
@@ -153,6 +161,14 @@ public class FarmManager {
 
         public FarmData(ChunkPos mainChunk) {
             this.mainChunk = mainChunk;
+        }
+
+        public void addChunk(ChunkPos chunk) {
+            chunks.add(chunk);
+        }
+
+        public Set<ChunkPos> getChunks() {
+            return Collections.unmodifiableSet(chunks);
         }
 
         public void addRawCrop(BlockPos pos, long currentTick) {
@@ -348,25 +364,35 @@ public class FarmManager {
             RaidManager.executeRaid(level, this, accumulatedValue, farmCenter);
         }
 
+        // ========== ИСПРАВЛЕННАЯ БЛОКИРОВКА: вокруг ВСЕХ чанков фермы ==========
+
         private void lockAllChunks(ServerLevel level, long until) {
             int radius = Config.LOCKDOWN_RADIUS.get();
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    ChunkPos chunkPos = new ChunkPos(mainChunk.x + dx, mainChunk.z + dz);
-                    CropScanningHandler.lockChunk(level, chunkPos, until);
+            for (ChunkPos farmChunk : chunks) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        ChunkPos chunkPos = new ChunkPos(farmChunk.x + dx, farmChunk.z + dz);
+                        CropScanningHandler.lockChunk(level, chunkPos, until);
+                    }
                 }
             }
+            LOGGER.info("[LOCK] Locked {} farm chunks (+{} radius each), total unique chunks affected", chunks.size(), radius);
         }
 
         private void unlockAllChunks(ServerLevel level) {
             int radius = Config.LOCKDOWN_RADIUS.get();
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    ChunkPos chunkPos = new ChunkPos(mainChunk.x + dx, mainChunk.z + dz);
-                    CropScanningHandler.unlockChunk(level, chunkPos);
+            for (ChunkPos farmChunk : chunks) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        ChunkPos chunkPos = new ChunkPos(farmChunk.x + dx, farmChunk.z + dz);
+                        CropScanningHandler.unlockChunk(level, chunkPos);
+                    }
                 }
             }
+            LOGGER.info("[UNLOCK] Unlocked {} farm chunks (+{} radius each)", chunks.size(), radius);
         }
+
+        // =====================================================================
 
         public boolean isEmpty() {
             return rawCrops.isEmpty() && accumulatedValue == 0 && !raidActive;
@@ -399,6 +425,18 @@ public class FarmManager {
 
         public void setAccumulatedValue(int value) {
             this.accumulatedValue = value;
+        }
+
+        public Vec3 getFarmCenter() {
+            return farmCenter;
+        }
+
+        public long getRaidCountdown() {
+            return raidCountdown;
+        }
+
+        public int getSpentCropCount() {
+            return spentCrops.size();
         }
     }
 }
