@@ -9,70 +9,78 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static software.bernie.geckolib.GeckoLibConstants.LOGGER;
-
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class RaidManager {
-    private static final Map<ServerLevel, Integer> totalRaidValueByLevel = new ConcurrentHashMap<>();
-    private static final Map<ServerLevel, Map<UUID, FarmManager.FarmData>> mobToFarmMap = new ConcurrentHashMap<>();
-    private static final Map<ServerLevel, Integer> currentRaidValueByLevel = new ConcurrentHashMap<>();
-    private static final Map<ServerLevel, Integer> originalFarmValueByLevel = new ConcurrentHashMap<>();
 
-    public static int getOriginalValue(ServerLevel level) {
-        return originalFarmValueByLevel.getOrDefault(level, 1);
+    private static final Map<UUID, Integer> totalRaidValueByFarm = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> currentRaidValueByFarm = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> originalFarmValueByFarm = new ConcurrentHashMap<>();
+    private static final Map<UUID, FarmManager.FarmData> mobToFarmMap = new ConcurrentHashMap<>();
+    private static final Map<ServerLevel, List<RaidSpawnTask>> activeSpawnTasks = new ConcurrentHashMap<>();
+
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent e) {
+        totalRaidValueByFarm.clear();
+        currentRaidValueByFarm.clear();
+        originalFarmValueByFarm.clear();
+        mobToFarmMap.clear();
+        activeSpawnTasks.clear();
     }
 
     public static void syncFarmData(ServerLevel level, FarmManager.FarmData farm, int guiValue) {
         boolean hasValue = guiValue > 0;
         boolean raidActive = farm.isRaidActive();
-        int maxValue = raidActive ? getOriginalValue(level) : Config.MAX_CROP_VALUE.get();
+        int maxValue = raidActive ? getOriginalValue(farm) : Config.MAX_CROP_VALUE.get();
         syncToClients(level, hasValue, guiValue, maxValue, raidActive);
     }
 
-    public static int getCurrentRaidValue(ServerLevel level) {
-        return currentRaidValueByLevel.getOrDefault(level, 0);
+    public static int getOriginalValue(FarmManager.FarmData farm) {
+        return originalFarmValueByFarm.getOrDefault(farm.getFarmId(), 1);
+    }
+
+    public static int getCurrentRaidValue(FarmManager.FarmData farm) {
+        return currentRaidValueByFarm.getOrDefault(farm.getFarmId(), 0);
     }
 
     public static void onRaidScheduled(ServerLevel level, FarmManager.FarmData farm, int value) {
-        originalFarmValueByLevel.put(level, value);
+        originalFarmValueByFarm.put(farm.getFarmId(), value);
         syncToClients(level, false, value, Config.MAX_CROP_VALUE.get(), false);
     }
 
-    public static void onRaidComplete(ServerLevel level) {
-        originalFarmValueByLevel.remove(level);
-        currentRaidValueByLevel.remove(level);
-        totalRaidValueByLevel.remove(level);
+    public static void onRaidComplete(ServerLevel level, FarmManager.FarmData farm) {
+        originalFarmValueByFarm.remove(farm.getFarmId());
+        currentRaidValueByFarm.remove(farm.getFarmId());
+        totalRaidValueByFarm.remove(farm.getFarmId());
         syncToClients(level, false, 0, Config.MAX_CROP_VALUE.get(), false);
     }
 
-    public static int getDisplayValue(ServerLevel level) {
-        int currentRaidValue = currentRaidValueByLevel.getOrDefault(level, 0);
-        int originalValue = originalFarmValueByLevel.getOrDefault(level, 0);
-        int totalRaidValue = totalRaidValueByLevel.getOrDefault(level, 0);
+    public static int getDisplayValue(FarmManager.FarmData farm) {
+        int currentRaidValue = currentRaidValueByFarm.getOrDefault(farm.getFarmId(), 0);
+        int originalValue = originalFarmValueByFarm.getOrDefault(farm.getFarmId(), 0);
+        int totalRaidValue = totalRaidValueByFarm.getOrDefault(farm.getFarmId(), 0);
 
-        if (currentRaidValue <= 0) {
-            return 0;
-        }
+        if (currentRaidValue <= 0) return 0;
 
         if (totalRaidValue > 0 && originalValue > 0) {
             double ratio = (double) currentRaidValue / totalRaidValue;
             int displayValue = (int) Math.ceil(originalValue * ratio);
             return Math.max(1, displayValue);
         }
+
         return Math.max(1, currentRaidValue);
     }
 
@@ -83,25 +91,24 @@ public class RaidManager {
         ServerLevel level = (ServerLevel) event.getEntity().level();
         UUID mobUUID = event.getEntity().getUUID();
 
-        Map<UUID, FarmManager.FarmData> mobMap = mobToFarmMap.get(level);
-        if (mobMap != null) {
-            FarmManager.FarmData farm = mobMap.remove(mobUUID);
-            if (farm != null) {
-                farm.removeSpawnedMob(mobUUID);
+        FarmManager.FarmData farm = mobToFarmMap.get(mobUUID);
 
-                int mobValue = calculateMobValue(event.getEntity());
-                int currentRaidValue = currentRaidValueByLevel.getOrDefault(level, 0);
-                currentRaidValue -= mobValue;
-                currentRaidValue = Math.max(0, currentRaidValue);
-                currentRaidValueByLevel.put(level, currentRaidValue);
+        if (farm != null) {
+            farm.removeSpawnedMob(mobUUID);
+            mobToFarmMap.remove(mobUUID);
 
-                int displayValue = getDisplayValue(level);
-                syncToClients(level, false, displayValue, Config.MAX_CROP_VALUE.get(), farm.isRaidActive());
-            }
+            int mobValue = calculateMobValue(event.getEntity());
+            int currentRaidValue = currentRaidValueByFarm.getOrDefault(farm.getFarmId(), 0);
+            currentRaidValue -= mobValue;
+            currentRaidValue = Math.max(0, currentRaidValue);
+            currentRaidValueByFarm.put(farm.getFarmId(), currentRaidValue);
+
+            int displayValue = getDisplayValue(farm);
+            syncToClients(level, false, displayValue, Config.MAX_CROP_VALUE.get(), farm.isRaidActive());
         }
     }
 
-    private static int calculateMobValue(net.minecraft.world.entity.Entity mob) {
+    private static int calculateMobValue(Entity mob) {
         if (mob instanceof FarmbotEntity) return 100;
         if (mob instanceof HaybotEntity) return 20;
         if (mob instanceof RedTapebotEntity) return 15;
@@ -110,56 +117,47 @@ public class RaidManager {
         return 1;
     }
 
-    private static int calculateTotalRaidValue(ServerLevel level, FarmManager.FarmData farm) {
-        return currentRaidValueByLevel.getOrDefault(level, 0);
-    }
+    public static void restoreRaid(ServerLevel level, FarmManager.FarmData farm, FarmManager.FarmSavedData.FarmEntry entry) {
+        originalFarmValueByFarm.put(farm.getFarmId(), entry.accumulatedValue);
+        currentRaidValueByFarm.put(farm.getFarmId(), entry.accumulatedValue);
+        totalRaidValueByFarm.put(farm.getFarmId(), entry.accumulatedValue);
 
-    public static List<BlockPos> findRaidSpawnPointsClose(ServerLevel level, Vec3 center, int max) {
-        List<BlockPos> res = new ArrayList<>();
-        ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
-        for (int i = 0; i < max; i++) {
-            double angle = rnd.nextDouble() * 2 * Math.PI;
-            double distance = rnd.nextDouble(8, 20);
-            int tX = (int)(center.x + Math.cos(angle) * distance);
-            int tZ = (int)(center.z + Math.sin(angle) * distance);
-
-            BlockPos sp = findClosestValidSpawn(level, tX, tZ, (int)center.y);
-            if (sp != null) res.add(sp);
+        for (UUID mobUUID : entry.spawnedMobs) {
+            Entity entity = level.getEntity(mobUUID);
+            if (entity != null && entity.isAlive()) {
+                farm.addSpawnedMob(mobUUID);
+                mobToFarmMap.put(mobUUID, farm);
+            }
         }
 
-        return res;
+        if (farm.getSpawnedMobCount() == 0) {
+            farm.setRaidActive(false);
+            farm.unlockChunks(level);
+            onRaidComplete(level, farm);
+        }
     }
 
-    public static void executeRaid(ServerLevel level, FarmManager.FarmData farm, int farmValue, Vec3 farmCenter) {
+    public static boolean executeRaid(ServerLevel level, FarmManager.FarmData farm, int farmValue, Vec3 farmCenter) {
         Vec3 center = farmCenter != null ? farmCenter : new Vec3(0, 64, 0);
-
         int raidLevel = getRaidLevel(farmValue);
         int playerCount = level.players().size();
         int budget = calculateBudget(raidLevel, farmValue, playerCount);
-
-        LOGGER.info("[EXECUTE_RAID] farmValue={}, raidLevel={}, playerCount={}, budget={}, center={}",
-                farmValue, raidLevel, playerCount, budget, center);
 
         SpawnGroup guaranteedGroup = getGuaranteedSpawn(raidLevel);
         List<SpawnGroup> budgetGroups = selectBudgetGroups(budget, raidLevel);
 
         List<Enemy> allGeneratedEnemies = new ArrayList<>();
+
         if (guaranteedGroup != null) {
             allGeneratedEnemies.addAll(guaranteedGroup.enemies);
-            LOGGER.info("[EXECUTE_RAID] Guaranteed group: {} enemies", guaranteedGroup.enemies.size());
-        } else {
-            LOGGER.warn("[EXECUTE_RAID] No guaranteed group found for level {}", raidLevel);
         }
 
         for (SpawnGroup bg : budgetGroups) {
             allGeneratedEnemies.addAll(bg.enemies);
         }
-        LOGGER.info("[EXECUTE_RAID] Budget groups: {}, total enemies: {}", budgetGroups.size(), allGeneratedEnemies.size());
 
         if (allGeneratedEnemies.isEmpty()) {
-            LOGGER.warn("[EXECUTE_RAID] No enemies generated, aborting raid");
-            return;
+            return false;
         }
 
         Map<String, Integer> enemyCounts = new LinkedHashMap<>();
@@ -169,7 +167,6 @@ public class RaidManager {
 
         int totalMobs = enemyCounts.values().stream().mapToInt(Integer::intValue).sum();
         int mobsPerWave = Math.max(1, totalMobs / 3);
-        LOGGER.info("[EXECUTE_RAID] Total mobs: {}, mobs per wave: {}", totalMobs, mobsPerWave);
 
         List<SpawnGroup> waves = new ArrayList<>();
         List<Enemy> currentWave = new ArrayList<>();
@@ -184,12 +181,17 @@ public class RaidManager {
                 int toAdd = Math.min(remaining, spaceInWave);
 
                 if (toAdd > 0) {
-                    Enemy existing = currentWave.stream().filter(e -> e.entityId.equals(entityId)).findFirst().orElse(null);
+                    Enemy existing = currentWave.stream()
+                            .filter(e -> e.entityId.equals(entityId))
+                            .findFirst()
+                            .orElse(null);
+
                     if (existing != null) {
                         existing.qty += toAdd;
                     } else {
                         currentWave.add(new Enemy(entityId, toAdd));
                     }
+
                     currentWaveSize += toAdd;
                     remaining -= toAdd;
                 }
@@ -213,19 +215,20 @@ public class RaidManager {
                 totalRaidValue += mobValue * enemy.qty;
             }
         }
-        currentRaidValueByLevel.put(level, totalRaidValue);
-        totalRaidValueByLevel.put(level, totalRaidValue);
-        LOGGER.info("[EXECUTE_RAID] Total raid value: {}, waves: {}", totalRaidValue, waves.size());
+
+        currentRaidValueByFarm.put(farm.getFarmId(), totalRaidValue);
+        totalRaidValueByFarm.put(farm.getFarmId(), totalRaidValue);
 
         int desiredSpawnPoints = Math.max(15, Math.min(60, totalMobs / 3));
         List<BlockPos> spawnPoints = findRaidSpawnPoints(level, center, desiredSpawnPoints);
 
         if (spawnPoints.isEmpty()) {
-            LOGGER.warn("[EXECUTE_RAID] No spawn points found at distance 32-65, trying closer range 8-20");
             spawnPoints = findRaidSpawnPointsClose(level, center, desiredSpawnPoints);
         }
 
-        LOGGER.info("[EXECUTE_RAID] Spawn points found: {}", spawnPoints.size());
+        if (spawnPoints.isEmpty()) {
+            return false;
+        }
 
         RaidSpawnTask task = new RaidSpawnTask();
         task.spawnGroups = waves;
@@ -236,12 +239,16 @@ public class RaidManager {
         task.farm = farm;
 
         activeSpawnTasks.computeIfAbsent(level, k -> new ArrayList<>()).add(task);
-        LOGGER.info("[EXECUTE_RAID] RaidSpawnTask created, will spawn on next tick");
 
-        int originalValue = originalFarmValueByLevel.getOrDefault(level, 0);
-        double scaleFactor = originalValue > 0 && totalRaidValue > 0 ? (double) originalValue / totalRaidValue : 1.0;
+        int originalValue = originalFarmValueByFarm.getOrDefault(farm.getFarmId(), 0);
+        double scaleFactor = originalValue > 0 && totalRaidValue > 0
+                ? (double) originalValue / totalRaidValue
+                : 1.0;
         int displayValue = (int) Math.round(totalRaidValue * scaleFactor);
+
         syncToClients(level, true, displayValue, Config.MAX_CROP_VALUE.get(), true);
+
+        return true;
     }
 
     private static int calculateMobValue(Enemy enemy) {
@@ -253,8 +260,6 @@ public class RaidManager {
         return 1;
     }
 
-    private static final Map<ServerLevel, List<RaidSpawnTask>> activeSpawnTasks = new ConcurrentHashMap<>();
-
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         for (ServerLevel level : event.getServer().getAllLevels()) {
@@ -264,6 +269,7 @@ public class RaidManager {
 
     private static void tickSpawnTasks(ServerLevel level) {
         List<RaidSpawnTask> tasks = activeSpawnTasks.get(level);
+
         if (tasks == null || tasks.isEmpty()) return;
 
         Iterator<RaidSpawnTask> it = tasks.iterator();
@@ -271,6 +277,7 @@ public class RaidManager {
 
         while (it.hasNext()) {
             RaidSpawnTask task = it.next();
+
             if (currentTime >= task.nextSpawnTime) {
                 if (task.spawnIndex < task.spawnGroups.size()) {
                     SpawnGroup group = task.spawnGroups.get(task.spawnIndex);
@@ -288,7 +295,7 @@ public class RaidManager {
         if (spawnPoints.isEmpty()) return;
 
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        BlockPos centerPos = new BlockPos((int)center.x, (int)center.y, (int)center.z);
+        BlockPos centerPos = new BlockPos((int) center.x, (int) center.y, (int) center.z);
 
         for (Enemy enemy : group.enemies) {
             ResourceLocation location = ResourceLocation.tryParse(enemy.entityId);
@@ -299,14 +306,16 @@ public class RaidManager {
 
             for (int i = 0; i < enemy.qty; i++) {
                 BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
+
                 Mob mob = (Mob) entityType.create(level);
+
                 if (mob != null) {
                     mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
                     mob.setPersistenceRequired();
 
                     UUID mobUUID = mob.getUUID();
                     farm.addSpawnedMob(mobUUID);
-                    mobToFarmMap.computeIfAbsent(level, k -> new ConcurrentHashMap<>()).put(mobUUID, farm);
+                    mobToFarmMap.put(mobUUID, farm);
 
                     if (mob instanceof TotebotEntity totebot) {
                         totebot.setRaidTarget(centerPos);
@@ -319,6 +328,7 @@ public class RaidManager {
                     } else if (mob instanceof RedTapebotEntity redTapebot) {
                         redTapebot.setRaidTarget(centerPos);
                     }
+
                     level.addFreshEntity(mob);
                 }
             }
@@ -328,6 +338,7 @@ public class RaidManager {
     private static int getRaidLevel(int farmValue) {
         List<? extends Integer> thresholds = Config.LEVEL_THRESHOLDS.get();
         int level = 0;
+
         for (int i = 0; i < thresholds.size(); i++) {
             if (farmValue >= thresholds.get(i)) {
                 level = i + 1;
@@ -335,6 +346,7 @@ public class RaidManager {
                 break;
             }
         }
+
         return Math.min(level, thresholds.size());
     }
 
@@ -345,6 +357,7 @@ public class RaidManager {
         List<? extends Integer> minBudgets = Config.MIN_BUDGET.get();
         List<? extends Integer> maxBudgets = Config.MAX_BUDGET.get();
         List<? extends Double> multipliers = Config.PLAYER_MULTIPLIERS.get();
+
         int maxCropValue = Config.MAX_CROP_VALUE.get();
 
         if (levelIndex > thresholds.size() || levelIndex > minBudgets.size() || levelIndex > maxBudgets.size()) {
@@ -356,7 +369,7 @@ public class RaidManager {
 
         float progress = 1.0f;
         if (nextMin > currentMin) {
-            progress = (float)(farmValue - currentMin) / (float)(nextMin - currentMin);
+            progress = (float) (farmValue - currentMin) / (float) (nextMin - currentMin);
             progress = Math.max(0.0f, Math.min(1.0f, progress));
         }
 
@@ -372,7 +385,8 @@ public class RaidManager {
         int min = minBudgets.get(levelIndex - 1);
         int max = maxBudgets.get(levelIndex - 1);
 
-        return Math.round(((max - min) * progress) + (min * multiplier));
+        int baseBudget = (int) (min + (max - min) * progress);
+        return Math.round(baseBudget * multiplier);
     }
 
     private static SpawnGroup getGuaranteedSpawn(int levelIndex) {
@@ -382,6 +396,7 @@ public class RaidManager {
         for (String spawn : spawns) {
             if (spawn.startsWith(prefix)) {
                 String data = spawn.substring(prefix.length());
+
                 if (data.startsWith("random:")) {
                     data = data.substring(7);
                     String[] options = data.split("\\|");
@@ -393,6 +408,7 @@ public class RaidManager {
                 }
             }
         }
+
         return null;
     }
 
@@ -400,10 +416,12 @@ public class RaidManager {
         List<SpawnGroup> selected = new ArrayList<>();
         List<SpawnGroup> availableGroups = getBudgetGroupsForLevel(levelIndex);
         int remaining = budget;
+
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         while (remaining > 0) {
             List<SpawnGroup> affordable = new ArrayList<>();
+
             for (SpawnGroup group : availableGroups) {
                 if (group.cost <= remaining) {
                     affordable.add(group);
@@ -458,7 +476,8 @@ public class RaidManager {
                         if (group != null) {
                             groups.add(group);
                         }
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
             }
         }
@@ -472,12 +491,15 @@ public class RaidManager {
 
         for (String part : parts) {
             String[] enemyParts = part.trim().split(":");
+
             if (enemyParts.length >= 3) {
                 String entityId = enemyParts[0] + ":" + enemyParts[1];
+
                 try {
                     int qty = Integer.parseInt(enemyParts[2]);
                     enemies.add(new Enemy(entityId, qty));
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
 
@@ -491,10 +513,29 @@ public class RaidManager {
         for (int i = 0; i < max; i++) {
             double angle = rnd.nextDouble() * 2 * Math.PI;
             double distance = rnd.nextDouble(32, 65);
-            int tX = (int)(center.x + Math.cos(angle) * distance);
-            int tZ = (int)(center.z + Math.sin(angle) * distance);
 
-            BlockPos sp = findClosestValidSpawn(level, tX, tZ, (int)center.y);
+            int tX = (int) (center.x + Math.cos(angle) * distance);
+            int tZ = (int) (center.z + Math.sin(angle) * distance);
+
+            BlockPos sp = findClosestValidSpawn(level, tX, tZ, (int) center.y);
+            if (sp != null) res.add(sp);
+        }
+
+        return res;
+    }
+
+    public static List<BlockPos> findRaidSpawnPointsClose(ServerLevel level, Vec3 center, int max) {
+        List<BlockPos> res = new ArrayList<>();
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+
+        for (int i = 0; i < max; i++) {
+            double angle = rnd.nextDouble() * 2 * Math.PI;
+            double distance = rnd.nextDouble(8, 20);
+
+            int tX = (int) (center.x + Math.cos(angle) * distance);
+            int tZ = (int) (center.z + Math.sin(angle) * distance);
+
+            BlockPos sp = findClosestValidSpawn(level, tX, tZ, (int) center.y);
             if (sp != null) res.add(sp);
         }
 
@@ -508,18 +549,22 @@ public class RaidManager {
 
         for (int o = 0; o < 48; o++) {
             int yU = tY + o;
+
             if (yU < maxY) {
                 m.set(x, yU, z);
                 if (isValidSpawn(level, m)) return m.immutable();
             }
+
             if (o > 0) {
                 int yD = tY - o;
+
                 if (yD >= minY) {
                     m.set(x, yD, z);
                     if (isValidSpawn(level, m)) return m.immutable();
                 }
             }
         }
+
         return null;
     }
 
@@ -533,6 +578,7 @@ public class RaidManager {
                 for (int z = -1; z <= 1; z++) {
                     m.set(p.getX() + x, p.getY() + y, p.getZ() + z);
                     net.minecraft.world.level.block.state.BlockState s = level.getBlockState(m);
+
                     if (!s.getCollisionShape(level, m).isEmpty() || !s.getFluidState().isEmpty()) return false;
                 }
 

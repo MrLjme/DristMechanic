@@ -18,34 +18,34 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class CropScanningHandler {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Dristmechanic.MODID);
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(Dristmechanic.MODID);
     private static volatile Object2IntMap<BlockState> cachedValues = new Object2IntOpenHashMap<>();
     private static volatile boolean cacheInitialized = false;
-    private static final Map<ChunkPos, ServerLevel> lockedChunks = new ConcurrentHashMap<>();
 
     static {
         cachedValues.defaultReturnValue(0);
     }
 
+    public static void initCache() {
+        rebuildCache(Config.CROP_VALUES.get());
+    }
+
     public static int getCropValue(BlockState state) {
         if (!cacheInitialized) {
-            rebuildCache(Config.CROP_VALUES.get());
+            initCache();
         }
         return cachedValues.getInt(state);
     }
 
     public static void rebuildCache(List<? extends String> list) {
-        LOGGER.info("[CROP_CACHE] Rebuilding cache with {} entries", list != null ? list.size() : 0);
         Object2IntMap<BlockState> newCache = new Object2IntOpenHashMap<>();
         newCache.defaultReturnValue(0);
+
         if (list != null) {
             for (String entry : list) {
                 String[] parts = entry.split("=");
@@ -56,22 +56,17 @@ public class CropScanningHandler {
                         if (rl != null) {
                             var block = BuiltInRegistries.BLOCK.get(rl);
                             if (block != Blocks.AIR) {
-                                int statesCount = 0;
                                 for (BlockState state : block.getStateDefinition().getPossibleStates()) {
                                     newCache.put(state, value);
-                                    statesCount++;
                                 }
-                                LOGGER.info("[CROP_CACHE] Registered {} with value {} ({} states)", rl, value, statesCount);
-                            } else {
-                                LOGGER.warn("[CROP_CACHE] Block {} not found in registry", rl);
                             }
                         }
                     } catch (NumberFormatException ignored) {
-                        LOGGER.warn("[CROP_CACHE] Invalid number format in entry: {}", entry);
                     }
                 }
             }
         }
+
         cachedValues = newCache;
         cacheInitialized = true;
     }
@@ -84,34 +79,9 @@ public class CropScanningHandler {
         BlockPos pos = event.getPos();
         ChunkPos chunkPos = new ChunkPos(pos);
 
-        LOGGER.info("[BLOCK_PLACE] Block placed at {}: {}", pos, event.getPlacedBlock().getBlock());
-
         if (isChunkLocked(level, chunkPos)) {
-            LOGGER.info("[BLOCK_PLACE] Chunk {} is locked, canceling placement", chunkPos);
             event.setCanceled(true);
             return;
-        }
-
-        int value = getCropValue(event.getPlacedBlock());
-        LOGGER.info("[BLOCK_PLACE] Crop value: {}", value);
-
-        if (value > 0) {
-            LOGGER.info("[BLOCK_PLACE] Calling FarmManager.onCropPlanted");
-            FarmManager.onCropPlanted(level, pos);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (event.getLevel().isClientSide()) return;
-
-        ServerLevel level = (ServerLevel) event.getLevel();
-        BlockPos pos = event.getPos();
-
-        LOGGER.info("[BLOCK_BREAK] Block broken at {}: {}", pos, event.getState().getBlock());
-
-        if (getCropValue(event.getState()) > 0) {
-            FarmManager.onCropRemoved(level, pos);
         }
     }
 
@@ -127,23 +97,13 @@ public class CropScanningHandler {
         int oldValue = getCropValue(oldState);
         int newValue = getCropValue(newState);
 
-        LOGGER.info("[BLOCK_CHANGED] {} -> {} at {}, oldVal: {}, newVal: {}",
-                oldState.getBlock(), newState.getBlock(), pos, oldValue, newValue);
-
-        // === ГЛАВНАЯ ПРОВЕРКА: если культура просто выросла (тот же блок) — игнорируем ===
         if (oldValue > 0 && oldState.getBlock() == newState.getBlock()) {
-            LOGGER.info("[BLOCK_CHANGED] Crop growth detected, ignoring");
             return;
         }
 
         if (newValue > 0) {
-            // Реальная посадка (было не-культура/воздух, стало культура)
-            LOGGER.info("[BLOCK_CHANGED] New crop planted, calling FarmManager.onCropPlanted");
-            FarmManager.onCropPlanted(serverLevel, pos);
+            FarmManager.onCropPlanted(serverLevel, pos, newValue);
         } else if (oldValue > 0 && newValue == 0) {
-            // Блок был культурой, а стал воздухом/чем-то другим
-            // (на всякий случай, если BreakEvent не отловил)
-            LOGGER.info("[BLOCK_CHANGED] Crop removed, calling FarmManager.onCropRemoved");
             FarmManager.onCropRemoved(serverLevel, pos);
         }
     }
@@ -158,13 +118,11 @@ public class CropScanningHandler {
         LevelChunk chunk = level.getChunk(chunkPos.x, chunkPos.z);
         chunk.setData(ModAttachments.LOCKED_UNTIL.get(), until);
         chunk.setUnsaved(true);
-        LOGGER.info("[LOCK] Chunk {} locked until tick {}", chunkPos, until);
     }
 
     public static void unlockChunk(ServerLevel level, ChunkPos chunkPos) {
         LevelChunk chunk = level.getChunk(chunkPos.x, chunkPos.z);
         chunk.setData(ModAttachments.LOCKED_UNTIL.get(), 0L);
         chunk.setUnsaved(true);
-        LOGGER.info("[UNLOCK] Chunk {} unlocked", chunkPos);
     }
 }

@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Level.class)
 public abstract class ServerLevelMixin {
+
     private static final Logger LOGGER = LoggerFactory.getLogger(Dristmechanic.MODID);
 
     @Inject(
@@ -25,9 +26,9 @@ public abstract class ServerLevelMixin {
             CallbackInfoReturnable<Boolean> cir
     ) {
         Level level = (Level) (Object) this;
+
         if (!level.isClientSide()) {
             BlockState oldState = level.getBlockState(pos);
-            LOGGER.info("[MIXIN] setBlock at {}, old: {} -> new: {}", pos, oldState.getBlock(), newState.getBlock());
             CropScanningHandler.onBlockChanged(level, pos, oldState, newState);
         }
     }
