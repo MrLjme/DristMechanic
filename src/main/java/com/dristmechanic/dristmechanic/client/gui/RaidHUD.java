@@ -9,18 +9,84 @@ import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 @EventBusSubscriber(modid = Dristmechanic.MODID, value = Dist.CLIENT)
 public class RaidHUD {
-    private static boolean isActive = false;
-    private static int currentValue = 0;
-    private static int maxValue = 100000;
-    private static boolean raidActive = false;
+
+    private static final long EXPIRE_MS = 5000;
+    private static final Map<Long, FarmDisplayData> farmsData = new ConcurrentHashMap<>();
+
+    private record FarmDisplayData(
+            double centerX,
+            double centerZ,
+            boolean active,
+            int currentValue,
+            int maxValue,
+            boolean raidActive,
+            long lastUpdateMs
+    ) {}
+
+    public static void updateData(int farmX, int farmZ, double centerX, double centerZ,
+                                  boolean active, int current, int max, boolean raid) {
+        long key = chunkKey(farmX, farmZ);
+        farmsData.put(key, new FarmDisplayData(
+                centerX, centerZ, active, current, max, raid, System.currentTimeMillis()));
+        cleanupExpired();
+    }
+
+    private static long chunkKey(int x, int z) {
+        return ((long) x & 0xFFFFFFFFL) | (((long) z & 0xFFFFFFFFL) << 32);
+    }
+
+    private static void cleanupExpired() {
+        long cutoff = System.currentTimeMillis() - EXPIRE_MS;
+        farmsData.entrySet().removeIf(e -> e.getValue().lastUpdateMs() < cutoff);
+    }
+
+    private static FarmDisplayData findNearest() {
+        Player player = Minecraft.getInstance().player;
+        if (player == null || farmsData.isEmpty()) return null;
+        FarmDisplayData best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (FarmDisplayData d : farmsData.values()) {
+            double dx = player.getX() - d.centerX();
+            double dz = player.getZ() - d.centerZ();
+            double dist = dx * dx + dz * dz;
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = d;
+            }
+        }
+        return best;
+    }
+
+    @SubscribeEvent
+    public static void registerGuiLayers(RegisterGuiLayersEvent event) {
+        event.registerAbove(
+                VanillaGuiLayers.HOTBAR,
+                ResourceLocation.fromNamespaceAndPath(Dristmechanic.MODID, "raid_hud"),
+                new LayeredDraw.Layer() {
+                    @Override
+                    public void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+                        Minecraft mc = Minecraft.getInstance();
+                        if (mc.player == null) return;
+                        cleanupExpired();
+                        FarmDisplayData nearest = findNearest();
+                        if (nearest == null || nearest.currentValue() <= 0) return;
+                        draw(guiGraphics, nearest);
+                    }
+                }
+        );
+    }
 
     private static final int YELLOW_MAX = 100;
     private static final int ORANGE_MAX = 1000;
@@ -38,40 +104,20 @@ public class RaidHUD {
     private static final int COLOR_PURPLE_FRAME = 0xFF9C8FE0;
     private static final int COLOR_FRAME = 0xFF9E1B1B;
 
-    public static void updateData(boolean active, int current, int max, boolean raid) {
-        isActive = active;
-        currentValue = current;
-        maxValue = max;
-        raidActive = raid;
-    }
-
-    @SubscribeEvent
-    public static void registerGuiLayers(RegisterGuiLayersEvent event) {
-        event.registerAbove(VanillaGuiLayers.HOTBAR, ResourceLocation.fromNamespaceAndPath(Dristmechanic.MODID, "raid_hud"), new LayeredDraw.Layer() {
-            @Override
-            public void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
-                if (Minecraft.getInstance().player == null || currentValue <= 0) return;
-                draw(guiGraphics);
-            }
-        });
-    }
-
-    private static void draw(GuiGraphics g) {
-        int width = 200;
-        int height = 12;
-        int x = 10;
-        int y = 10;
-        int frame = 2;
-
+    private static void draw(GuiGraphics g, FarmDisplayData data) {
+        int width = 200, height = 12, x = 10, y = 10, frame = 2;
+        int currentValue = data.currentValue();
         boolean purple = currentValue >= RED_MAX;
 
         g.fill(x - frame - 1, y - frame - 1, x + width + frame + 1, y + height + frame + 1, 0xFF000000);
-        g.fill(x - frame, y - frame, x + width + frame, y + height + frame, purple ? COLOR_PURPLE_FRAME : COLOR_FRAME);
+        g.fill(x - frame, y - frame, x + width + frame, y + height + frame,
+                purple ? COLOR_PURPLE_FRAME : COLOR_FRAME);
 
         if (purple) {
             g.fill(x, y, x + width, y + height, COLOR_PURPLE_DIM);
-            float ratio = Mth.clamp((currentValue - RED_MAX) / (float) (PURPLE_MAX - RED_MAX), 0.0F, 1.0F);
-            int fillW = (int) (width * ratio);
+            float ratio = Mth.clamp(
+                    (currentValue - RED_MAX) / (float)(PURPLE_MAX - RED_MAX), 0.0F, 1.0F);
+            int fillW = (int)(width * ratio);
             if (fillW > 0) g.fill(x, y, x + fillW, y + height, COLOR_PURPLE);
         } else {
             int segW = width / 3;
@@ -84,26 +130,29 @@ public class RaidHUD {
             for (int i = 0; i < 3; i++) {
                 int w = (i == 2) ? (x + width - xs[i]) : segW;
                 g.fill(xs[i], y, xs[i] + w, y + height, dim[i]);
-                float ratio = Mth.clamp((currentValue - from[i]) / (float) (to[i] - from[i]), 0.0F, 1.0F);
-                int fillW = (int) (w * ratio);
+                float ratio = Mth.clamp(
+                        (currentValue - from[i]) / (float)(to[i] - from[i]), 0.0F, 1.0F);
+                int fillW = (int)(w * ratio);
                 if (fillW > 0) g.fill(xs[i], y, xs[i] + fillW, y + height, bright[i]);
             }
-
             drawDiamond(g, x + segW, y + height / 2, COLOR_RED);
             drawDiamond(g, x + segW * 2, y + height / 2, COLOR_RED);
-
             g.fill(x + width - 2, y, x + width, y + height, 0xFFE8E8E8);
         }
 
         Component text;
         if (purple) {
-            text = Component.literal("THREAT: " + currentValue + "/" + PURPLE_MAX).withStyle(ChatFormatting.DARK_PURPLE);
-        } else if (raidActive) {
-            text = Component.literal("RAID: " + currentValue).withStyle(ChatFormatting.RED);
-        } else if (isActive) {
-            text = Component.literal("LICENSE BREACH: " + currentValue).withStyle(ChatFormatting.RED);
+            text = Component.literal("THREAT: " + currentValue + "/" + PURPLE_MAX)
+                    .withStyle(ChatFormatting.DARK_PURPLE);
+        } else if (data.raidActive()) {
+            text = Component.literal("RAID: " + currentValue)
+                    .withStyle(ChatFormatting.RED);
+        } else if (data.active()) {
+            text = Component.literal("LICENSE BREACH: " + currentValue)
+                    .withStyle(ChatFormatting.RED);
         } else {
-            text = Component.literal("THREAT: " + currentValue).withStyle(ChatFormatting.YELLOW);
+            text = Component.literal("THREAT: " + currentValue)
+                    .withStyle(ChatFormatting.YELLOW);
         }
         g.drawString(Minecraft.getInstance().font, text, x, y + height + 6, 0xFFFFFF, true);
     }

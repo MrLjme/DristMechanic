@@ -108,7 +108,7 @@ public class DristCommands {
         int spentCount = nearest.getSpentCropCount();
         int accumulated = nearest.getAccumulatedValue();
         boolean raidActive = nearest.isRaidActive();
-        long countdown = nearest.getRaidCountdown();
+        long countdown = nearest.getRaidCountdown(level);
         Vec3 center = nearest.getFarmCenter();
 
         if (center == null) {

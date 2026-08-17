@@ -18,7 +18,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class CropScanningHandler {
@@ -27,25 +30,16 @@ public class CropScanningHandler {
     private static volatile Object2IntMap<BlockState> cachedValues = new Object2IntOpenHashMap<>();
     private static volatile boolean cacheInitialized = false;
 
-    static {
-        cachedValues.defaultReturnValue(0);
-    }
-
-    public static void initCache() {
-        rebuildCache(Config.CROP_VALUES.get());
-    }
+    static { cachedValues.defaultReturnValue(0); }
 
     public static int getCropValue(BlockState state) {
-        if (!cacheInitialized) {
-            initCache();
-        }
+        if (!cacheInitialized) rebuildCache(Config.CROP_VALUES.get());
         return cachedValues.getInt(state);
     }
 
     public static void rebuildCache(List<? extends String> list) {
         Object2IntMap<BlockState> newCache = new Object2IntOpenHashMap<>();
         newCache.defaultReturnValue(0);
-
         if (list != null) {
             for (String entry : list) {
                 String[] parts = entry.split("=");
@@ -61,12 +55,10 @@ public class CropScanningHandler {
                                 }
                             }
                         }
-                    } catch (NumberFormatException ignored) {
-                    }
+                    } catch (NumberFormatException ignored) {}
                 }
             }
         }
-
         cachedValues = newCache;
         cacheInitialized = true;
     }
@@ -74,7 +66,6 @@ public class CropScanningHandler {
     @SubscribeEvent
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         if (event.getLevel().isClientSide()) return;
-
         ServerLevel level = (ServerLevel) event.getLevel();
         BlockPos pos = event.getPos();
         ChunkPos chunkPos = new ChunkPos(pos);
@@ -83,27 +74,37 @@ public class CropScanningHandler {
             event.setCanceled(true);
             return;
         }
+
+        int value = getCropValue(event.getPlacedBlock());
+        if (value > 0) {
+            FarmManager.onCropPlanted(level, pos);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (event.getLevel().isClientSide()) return;
+        ServerLevel level = (ServerLevel) event.getLevel();
+        BlockPos pos = event.getPos();
+
+        if (getCropValue(event.getState()) > 0) {
+            FarmManager.onCropRemoved(level, pos);
+        }
     }
 
     public static void onBlockChanged(
-            net.minecraft.world.level.Level level,
-            BlockPos pos,
-            BlockState oldState,
-            BlockState newState
-    ) {
+            net.minecraft.world.level.Level level, BlockPos pos,
+            BlockState oldState, BlockState newState) {
         if (level.isClientSide()) return;
-
         ServerLevel serverLevel = (ServerLevel) level;
         int oldValue = getCropValue(oldState);
         int newValue = getCropValue(newState);
 
-        if (oldValue > 0 && oldState.getBlock() == newState.getBlock()) {
-            return;
-        }
+        if (oldValue > 0 && oldState.getBlock() == newState.getBlock()) return;
 
         if (newValue > 0) {
-            FarmManager.onCropPlanted(serverLevel, pos, newValue);
-        } else if (oldValue > 0 && newValue == 0) {
+            FarmManager.onCropPlanted(serverLevel, pos);
+        } else if (oldValue > 0) {
             FarmManager.onCropRemoved(serverLevel, pos);
         }
     }

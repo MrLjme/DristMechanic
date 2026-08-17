@@ -1,14 +1,13 @@
 package com.dristmechanic.dristmechanic.handler;
 
+import net.minecraft.nbt.StringTag;
 import com.dristmechanic.dristmechanic.Config;
 import com.dristmechanic.dristmechanic.Dristmechanic;
-import com.dristmechanic.dristmechanic.init.ModAttachments;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.StringTag;
-import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -17,6 +16,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -24,382 +24,339 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import net.minecraft.core.HolderLookup;
 
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class FarmManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Dristmechanic.MODID);
     private static MinecraftServer serverInstance = null;
-    private static final Map<ServerLevel, Map<ChunkPos, FarmData>> farmsByLevel = new ConcurrentHashMap<>();
 
-    // ========== SAVED DATA ==========
-
-    public static class FarmSavedData extends SavedData {
-
-        private static final String DATA_NAME = Dristmechanic.MODID + "_farms";
-
-        private final Map<UUID, FarmEntry> farms = new HashMap<>();
-
-        public static class FarmEntry {
-            public UUID farmId;
-            public int accumulatedValue;
-            public long raidCountdown;
-            public boolean raidActive;
-            public boolean mobsSpawned;
-            public double centerX, centerY, centerZ;
-            public List<String> chunks = new ArrayList<>();
-            public Set<UUID> spawnedMobs = new HashSet<>();
-            public UUID hologramUUID;
-
-            public FarmEntry(UUID farmId) {
-                this.farmId = farmId;
-            }
+    public static Map<ChunkPos, FarmData> getFarmsForLevel(ServerLevel level) {
+        FarmSavedData data = getData(level);
+        Map<ChunkPos, FarmData> result = new HashMap<>();
+        for (FarmData farm : data.getAllFarms()) {
+            result.put(farm.getMainChunk(), farm);
         }
-
-        public FarmSavedData() {}
-
-        public static FarmSavedData get(ServerLevel level) {
-            MinecraftServer server = level.getServer();
-            return server.overworld().getDataStorage()
-                    .computeIfAbsent(new SavedData.Factory<FarmSavedData>(
-                            FarmSavedData::new,
-                            FarmSavedData::load
-                    ), DATA_NAME);
-        }
-
-        public static FarmSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
-            FarmSavedData data = new FarmSavedData();
-
-            ListTag farmsTag = tag.getList("farms", Tag.TAG_COMPOUND);
-
-            for (int i = 0; i < farmsTag.size(); i++) {
-                CompoundTag farmTag = farmsTag.getCompound(i);
-
-                UUID farmId = farmTag.getUUID("farmId");
-                FarmEntry entry = new FarmEntry(farmId);
-
-                entry.accumulatedValue = farmTag.getInt("accumulatedValue");
-                entry.raidCountdown = farmTag.getLong("raidCountdown");
-                entry.raidActive = farmTag.getBoolean("raidActive");
-                entry.mobsSpawned = farmTag.getBoolean("mobsSpawned");
-                entry.centerX = farmTag.getDouble("centerX");
-                entry.centerY = farmTag.getDouble("centerY");
-                entry.centerZ = farmTag.getDouble("centerZ");
-                entry.hologramUUID = farmTag.hasUUID("hologramUUID") ? farmTag.getUUID("hologramUUID") : null;
-
-                ListTag chunksTag = farmTag.getList("chunks", Tag.TAG_STRING);
-                for (int j = 0; j < chunksTag.size(); j++) {
-                    entry.chunks.add(chunksTag.getString(j));
-                }
-
-                ListTag mobsTag = farmTag.getList("spawnedMobs", Tag.TAG_INT_ARRAY);
-                for (int j = 0; j < mobsTag.size(); j++) {
-                    int[] uuidArray = mobsTag.getIntArray(j);
-                    if (uuidArray.length == 4) {
-                        UUID mobUUID = new UUID(
-                                ((long) uuidArray[0] << 32) | (uuidArray[1] & 0xFFFFFFFFL),
-                                ((long) uuidArray[2] << 32) | (uuidArray[3] & 0xFFFFFFFFL)
-                        );
-                        entry.spawnedMobs.add(mobUUID);
-                    }
-                }
-
-                data.farms.put(farmId, entry);
-            }
-
-            return data;
-        }
-
-        @Override
-        public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
-            ListTag farmsTag = new ListTag();
-
-            for (FarmEntry entry : farms.values()) {
-                CompoundTag farmTag = new CompoundTag();
-
-                farmTag.putUUID("farmId", entry.farmId);
-                farmTag.putInt("accumulatedValue", entry.accumulatedValue);
-                farmTag.putLong("raidCountdown", entry.raidCountdown);
-                farmTag.putBoolean("raidActive", entry.raidActive);
-                farmTag.putBoolean("mobsSpawned", entry.mobsSpawned);
-                farmTag.putDouble("centerX", entry.centerX);
-                farmTag.putDouble("centerY", entry.centerY);
-                farmTag.putDouble("centerZ", entry.centerZ);
-
-                if (entry.hologramUUID != null) {
-                    farmTag.putUUID("hologramUUID", entry.hologramUUID);
-                }
-
-                ListTag chunksTag = new ListTag();
-                for (String chunk : entry.chunks) {
-                    chunksTag.add(StringTag.valueOf(chunk));
-                }
-                farmTag.put("chunks", chunksTag);
-
-                ListTag mobsTag = new ListTag();
-                for (UUID mobUUID : entry.spawnedMobs) {
-                    int[] uuidArray = new int[] {
-                            (int) (mobUUID.getMostSignificantBits() >> 32),
-                            (int) mobUUID.getMostSignificantBits(),
-                            (int) (mobUUID.getLeastSignificantBits() >> 32),
-                            (int) mobUUID.getLeastSignificantBits()
-                    };
-                    mobsTag.add(new IntArrayTag(uuidArray));
-                }
-                farmTag.put("spawnedMobs", mobsTag);
-
-                farmsTag.add(farmTag);
-            }
-
-            tag.put("farms", farmsTag);
-            return tag;
-        }
-
-        public void saveFarm(FarmEntry entry) {
-            farms.put(entry.farmId, entry);
-            setDirty();
-        }
-
-        public FarmEntry getFarm(UUID farmId) {
-            return farms.get(farmId);
-        }
-
-        public void removeFarm(UUID farmId) {
-            farms.remove(farmId);
-            setDirty();
-        }
-
-        public Collection<FarmEntry> getAllFarms() {
-            return farms.values();
-        }
+        return result;
     }
-
-    // ========== ОСНОВНАЯ ЛОГИКА ==========
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent e) {
         serverInstance = e.getServer();
-        CropScanningHandler.initCache();
-
-        for (ServerLevel level : e.getServer().getAllLevels()) {
-            restoreFarmsFromSavedData(level);
-        }
     }
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent e) {
         serverInstance = null;
-        farmsByLevel.clear();
     }
 
-    private static void restoreFarmsFromSavedData(ServerLevel level) {
-        FarmSavedData savedData = FarmSavedData.get(level);
+    public static FarmSavedData getData(ServerLevel level) {
+        return level.getDataStorage().computeIfAbsent(
+                new SavedData.Factory<>(FarmSavedData::new, FarmSavedData::load),
+                Dristmechanic.MODID + "_farms"
+        );
+    }
 
-        for (FarmSavedData.FarmEntry entry : savedData.getAllFarms()) {
-            if (entry.raidActive || entry.raidCountdown > 0) {
-                ChunkPos mainChunk = new ChunkPos((int) entry.centerX, (int) entry.centerZ);
-
-                FarmData farm = new FarmData(mainChunk, entry.farmId);
-                farm.raidCountdown = entry.raidCountdown;
-                farm.raidActive = entry.raidActive;
-                farm.accumulatedValue = entry.accumulatedValue;
-                farm.mobsSpawned = entry.mobsSpawned;
-                farm.farmCenter = new Vec3(entry.centerX, entry.centerY, entry.centerZ);
-                farm.hologramUUID = entry.hologramUUID;
-
-                for (String chunkStr : entry.chunks) {
-                    try {
-                        String[] parts = chunkStr.split(",");
-                        int cx = Integer.parseInt(parts[0]);
-                        int cz = Integer.parseInt(parts[1]);
-                        farm.addChunk(new ChunkPos(cx, cz));
-                    } catch (Exception ignored) {}
-                }
-
-                Map<ChunkPos, FarmData> farms = farmsByLevel.computeIfAbsent(level, k -> new ConcurrentHashMap<>());
-                for (ChunkPos chunk : farm.getChunks()) {
-                    farms.put(chunk, farm);
-                }
-
-                if (entry.raidActive) {
-                    RaidManager.restoreRaid(level, farm, entry);
-                }
-            }
+    public static void onCropPlanted(ServerLevel level, BlockPos pos) {
+        ChunkPos chunkPos = new ChunkPos(pos);
+        FarmSavedData data = getData(level);
+        FarmData farm = data.findOrCreateFarm(chunkPos);
+        if (farm != null) {
+            if (farm.isSpentCrop(pos) || farm.containsRawCrop(pos)) return;
+            farm.addRawCrop(pos, level.getGameTime());
+            farm.resetStabilityTimer();
+            data.setDirty();
         }
     }
 
-    public static void onCropPlanted(ServerLevel level, BlockPos pos, int value) {
-        ChunkPos chunkPos = new ChunkPos(pos);
-        Map<ChunkPos, FarmData> farms = farmsByLevel.computeIfAbsent(level, k -> new ConcurrentHashMap<>());
-        FarmData farm = findOrCreateFarm(farms, chunkPos);
-
-        if (farm.isSpentCrop(pos)) return;
-        if (farm.containsRawCrop(pos)) return;
-
-        farm.addRawCrop(pos, level.getGameTime(), value);
-        farm.resetStabilityTimer();
-    }
-
     public static void onCropRemoved(ServerLevel level, BlockPos pos) {
-        ChunkPos chunkPos = new ChunkPos(pos);
-        Map<ChunkPos, FarmData> farms = farmsByLevel.get(level);
-
-        if (farms == null) return;
-
-        for (FarmData farm : farms.values()) {
+        FarmSavedData data = getData(level);
+        FarmData farm = data.getFarmByCrop(pos);
+        if (farm != null) {
             if (farm.containsRawCrop(pos)) {
                 farm.removeRawCrop(pos);
+                data.setDirty();
                 int guiValue = farm.getGuiValue(level);
-                syncFarmData(level, farm, guiValue);
+                RaidManager.syncFarmData(level, farm, guiValue);
                 return;
             }
             if (farm.isSpentCrop(pos)) {
                 farm.removeSpentCrop(pos);
-                return;
+                data.setDirty();
             }
         }
-    }
-
-    public static void syncFarmData(ServerLevel level, FarmData farm, int guiValue) {
-        boolean hasValue = guiValue > 0;
-        boolean raidActive = farm.isRaidActive();
-        int maxValue = raidActive ? farm.getAccumulatedValue() : Config.MAX_CROP_VALUE.get();
-
-        RaidManager.syncToClients(level, hasValue, guiValue, maxValue, raidActive);
-
-        saveFarmToDisk(level, farm);
-    }
-
-    private static void saveFarmToDisk(ServerLevel level, FarmData farm) {
-        FarmSavedData savedData = FarmSavedData.get(level);
-
-        FarmSavedData.FarmEntry entry = new FarmSavedData.FarmEntry(farm.farmId);
-        entry.accumulatedValue = farm.accumulatedValue;
-        entry.raidCountdown = farm.raidCountdown;
-        entry.raidActive = farm.raidActive;
-        entry.mobsSpawned = farm.mobsSpawned;
-        entry.hologramUUID = farm.hologramUUID;
-
-        if (farm.farmCenter != null) {
-            entry.centerX = farm.farmCenter.x;
-            entry.centerY = farm.farmCenter.y;
-            entry.centerZ = farm.farmCenter.z;
-        }
-
-        for (ChunkPos chunk : farm.getChunks()) {
-            entry.chunks.add(chunk.x + "," + chunk.z);
-        }
-
-        entry.spawnedMobs.addAll(farm.spawnedMobs);
-
-        savedData.saveFarm(entry);
-    }
-
-    private static FarmData findOrCreateFarm(Map<ChunkPos, FarmData> farms, ChunkPos startChunk) {
-        FarmData existing = farms.get(startChunk);
-        if (existing != null) return existing;
-
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (dx == 0 && dz == 0) continue;
-
-                ChunkPos neighbor = new ChunkPos(startChunk.x + dx, startChunk.z + dz);
-                FarmData farm = farms.get(neighbor);
-
-                if (farm != null) {
-                    farms.put(startChunk, farm);
-                    farm.addChunk(startChunk);
-                    return farm;
-                }
-            }
-        }
-
-        FarmData newFarm = new FarmData(startChunk, UUID.randomUUID());
-        newFarm.addChunk(startChunk);
-        farms.put(startChunk, newFarm);
-        return newFarm;
     }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         if (serverInstance == null) return;
-
         for (ServerLevel level : serverInstance.getAllLevels()) {
-            Map<ChunkPos, FarmData> farms = farmsByLevel.get(level);
+            FarmSavedData data = getData(level);
+            data.tick(level);
+        }
+    }
 
-            if (farms == null) continue;
+    public static Collection<FarmData> getAllFarms(ServerLevel level) {
+        return getData(level).getAllFarms();
+    }
 
-            Set<FarmData> uniqueFarms = new HashSet<>(farms.values());
+    public static class FarmSavedData extends SavedData {
 
-            for (FarmData farm : uniqueFarms) {
-                farm.tick(level);
+        private final Map<ChunkPos, FarmData> farms = new ConcurrentHashMap<>();
+        private final Map<ChunkPos, ChunkPos> chunkToFarmOwner = new ConcurrentHashMap<>();
+
+        public FarmSavedData() {}
+
+        public static FarmSavedData load(CompoundTag tag, HolderLookup.Provider provider) {
+            FarmSavedData data = new FarmSavedData();
+            ListTag list = tag.getList("farms", Tag.TAG_COMPOUND);
+            for (int i = 0; i < list.size(); i++) {
+                CompoundTag farmTag = list.getCompound(i);
+                FarmData farm = FarmData.deserialize(farmTag);
+                if (farm != null) {
+                    data.farms.put(farm.getMainChunk(), farm);
+                    for (ChunkPos c : farm.getChunks()) {
+                        data.chunkToFarmOwner.put(c, farm.getMainChunk());
+                    }
+                }
             }
+            LOGGER.info("[FARM_MANAGER] Loaded {} farms from disk", data.farms.size());
+            return data;
+        }
 
-            for (FarmData farm : uniqueFarms) {
-                if (farm.isEmpty() && !farm.isRaidActive()) {
-                    farm.cleanup(level);
-                    RaidManager.syncToClients(level, false, 0, Config.MAX_CROP_VALUE.get(), false);
-                    FarmSavedData.get(level).removeFarm(farm.farmId);
+        @Override
+        public @NotNull CompoundTag save(@NotNull CompoundTag tag, @NotNull HolderLookup.Provider provider) {
+            ListTag list = new ListTag();
+            for (FarmData farm : farms.values()) {
+                list.add(farm.serialize());
+            }
+            tag.put("farms", list);
+            return tag;
+        }
+
+        public FarmData findOrCreateFarm(ChunkPos startChunk) {
+            ChunkPos existing = chunkToFarmOwner.get(startChunk);
+            if (existing != null) return farms.get(existing);
+
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    ChunkPos neighbor = new ChunkPos(startChunk.x + dx, startChunk.z + dz);
+                    ChunkPos owner = chunkToFarmOwner.get(neighbor);
+                    if (owner != null) {
+                        FarmData farm = farms.get(owner);
+                        farm.addChunk(startChunk);
+                        chunkToFarmOwner.put(startChunk, owner);
+                        setDirty();
+                        return farm;
+                    }
                 }
             }
 
-            farms.entrySet().removeIf(entry ->
-                    entry.getValue().isEmpty() && !entry.getValue().isRaidActive());
-        }
-    }
-
-    public static Map<ChunkPos, FarmData> getFarmsForLevel(ServerLevel level) {
-        return farmsByLevel.get(level);
-    }
-
-    // ========== FARM DATA ==========
-
-    public static class FarmData {
-
-        public UUID getFarmId() {
-            return farmId;
+            FarmData newFarm = new FarmData(startChunk);
+            newFarm.addChunk(startChunk);
+            farms.put(startChunk, newFarm);
+            chunkToFarmOwner.put(startChunk, startChunk);
+            setDirty();
+            LOGGER.info("[FARM_MANAGER] Creating new farm at chunk {}", startChunk);
+            return newFarm;
         }
 
-        private static class CropRecord {
-            final long plantedTick;
-            final int value;
+        public FarmData getFarmByCrop(BlockPos pos) {
+            ChunkPos cp = new ChunkPos(pos);
+            ChunkPos owner = chunkToFarmOwner.get(cp);
+            return owner != null ? farms.get(owner) : null;
+        }
 
-            CropRecord(long plantedTick, int value) {
-                this.plantedTick = plantedTick;
-                this.value = value;
+        public FarmData getFarmByMainChunk(ChunkPos mainChunk) {
+            return farms.get(mainChunk);
+        }
+
+        public void tick(ServerLevel level) {
+            List<FarmData> toRemove = new ArrayList<>();
+            for (FarmData farm : farms.values()) {
+                farm.tick(level);
+                if (farm.isEmpty() && !farm.isRaidActive() && farm.getRaidCountdown(level) <= 0) {
+                    farm.cleanup(level);
+                    toRemove.add(farm);
+                }
+            }
+            if (!toRemove.isEmpty()) {
+                for (FarmData farm : toRemove) {
+                    for (ChunkPos c : farm.getChunks()) {
+                        chunkToFarmOwner.remove(c);
+                    }
+                    farms.remove(farm.getMainChunk());
+                }
+                setDirty();
             }
         }
 
-        private final UUID farmId;
-        private final ChunkPos mainChunk;
+        public Collection<FarmData> getAllFarms() {
+            return farms.values();
+        }
+    }
+
+    public static class FarmData {
+
+        private ChunkPos mainChunk;
         private final Set<ChunkPos> chunks = new HashSet<>();
-        private final Map<BlockPos, CropRecord> rawCrops = new HashMap<>();
+        private final Map<BlockPos, Long> rawCrops = new HashMap<>();
         private final Set<BlockPos> spentCrops = new HashSet<>();
         private int accumulatedValue = 0;
         private long stabilityTimer = 0;
-        private long raidCountdown = 0;
+        private long raidCountdownEndTick = -1;
         private boolean raidActive = false;
         private boolean mobsSpawned = false;
         private final Set<UUID> spawnedMobs = new HashSet<>();
         private UUID hologramUUID = null;
         private Vec3 farmCenter = null;
+        private int currentRaidValue = 0;
+        private int totalRaidValue = 0;
+        private int originalFarmValue = 0;
 
-        public FarmData(ChunkPos mainChunk, UUID farmId) {
+        public FarmData(ChunkPos mainChunk) {
             this.mainChunk = mainChunk;
-            this.farmId = farmId;
         }
 
-        public void setRaidActive(boolean active) {
-            this.raidActive = active;
+        public int getRawCropCount() {
+            return rawCrops.size();
         }
 
-        public void unlockChunks(ServerLevel level) {
-            unlockAllChunks(level);
+        public long getRaidCountdown() {
+            if (raidCountdownEndTick < 0) return 0;
+            return Math.max(0, raidCountdownEndTick);
+        }
+
+        public CompoundTag serialize() {
+            CompoundTag tag = new CompoundTag();
+            tag.putInt("mainX", mainChunk.x);
+            tag.putInt("mainZ", mainChunk.z);
+
+            ListTag chunkList = new ListTag();
+            for (ChunkPos c : chunks) {
+                CompoundTag ct = new CompoundTag();
+                ct.putInt("x", c.x);
+                ct.putInt("z", c.z);
+                chunkList.add(ct);
+            }
+            tag.put("chunks", chunkList);
+
+            ListTag rawList = new ListTag();
+            for (Map.Entry<BlockPos, Long> e : rawCrops.entrySet()) {
+                CompoundTag rt = new CompoundTag();
+                BlockPos p = e.getKey();
+                rt.putInt("x", p.getX());
+                rt.putInt("y", p.getY());
+                rt.putInt("z", p.getZ());
+                rt.putLong("tick", e.getValue());
+                rawList.add(rt);
+            }
+            tag.put("rawCrops", rawList);
+
+            ListTag spentList = new ListTag();
+            for (BlockPos p : spentCrops) {
+                CompoundTag st = new CompoundTag();
+                st.putInt("x", p.getX());
+                st.putInt("y", p.getY());
+                st.putInt("z", p.getZ());
+                spentList.add(st);
+            }
+            tag.put("spentCrops", spentList);
+
+            tag.putInt("accumulatedValue", accumulatedValue);
+            tag.putLong("stabilityTimer", stabilityTimer);
+            tag.putLong("raidCountdownEndTick", raidCountdownEndTick);
+            tag.putBoolean("raidActive", raidActive);
+            tag.putBoolean("mobsSpawned", mobsSpawned);
+
+            ListTag mobsList = new ListTag();
+            for (UUID u : spawnedMobs) {
+                mobsList.add(StringTag.valueOf(u.toString()));
+            }
+            tag.put("spawnedMobs", mobsList);
+
+            if (hologramUUID != null) {
+                tag.putUUID("hologramUUID", hologramUUID);
+            }
+
+            if (farmCenter != null) {
+                CompoundTag center = new CompoundTag();
+                center.putDouble("x", farmCenter.x);
+                center.putDouble("y", farmCenter.y);
+                center.putDouble("z", farmCenter.z);
+                tag.put("farmCenter", center);
+            }
+
+            tag.putInt("currentRaidValue", currentRaidValue);
+            tag.putInt("totalRaidValue", totalRaidValue);
+            tag.putInt("originalFarmValue", originalFarmValue);
+
+            return tag;
+        }
+
+        public static FarmData deserialize(CompoundTag tag) {
+            ChunkPos main = new ChunkPos(tag.getInt("mainX"), tag.getInt("mainZ"));
+            FarmData farm = new FarmData(main);
+
+            ListTag chunkList = tag.getList("chunks", Tag.TAG_COMPOUND);
+            for (int i = 0; i < chunkList.size(); i++) {
+                CompoundTag ct = chunkList.getCompound(i);
+                farm.chunks.add(new ChunkPos(ct.getInt("x"), ct.getInt("z")));
+            }
+
+            ListTag rawList = tag.getList("rawCrops", Tag.TAG_COMPOUND);
+            for (int i = 0; i < rawList.size(); i++) {
+                CompoundTag rt = rawList.getCompound(i);
+                farm.rawCrops.put(
+                        new BlockPos(rt.getInt("x"), rt.getInt("y"), rt.getInt("z")),
+                        rt.getLong("tick")
+                );
+            }
+
+            ListTag spentList = tag.getList("spentCrops", Tag.TAG_COMPOUND);
+            for (int i = 0; i < spentList.size(); i++) {
+                CompoundTag st = spentList.getCompound(i);
+                farm.spentCrops.add(new BlockPos(st.getInt("x"), st.getInt("y"), st.getInt("z")));
+            }
+
+            farm.accumulatedValue = tag.getInt("accumulatedValue");
+            farm.stabilityTimer = tag.getLong("stabilityTimer");
+            farm.raidCountdownEndTick = tag.getLong("raidCountdownEndTick");
+            farm.raidActive = tag.getBoolean("raidActive");
+            farm.mobsSpawned = tag.getBoolean("mobsSpawned");
+
+            ListTag mobsList = tag.getList("spawnedMobs", Tag.TAG_STRING);
+            for (int i = 0; i < mobsList.size(); i++) {
+                try {
+                    farm.spawnedMobs.add(UUID.fromString(mobsList.getString(i)));
+                } catch (IllegalArgumentException ignored) {}
+            }
+
+            if (tag.hasUUID("hologramUUID")) {
+                farm.hologramUUID = tag.getUUID("hologramUUID");
+            }
+
+            if (tag.contains("farmCenter", Tag.TAG_COMPOUND)) {
+                CompoundTag center = tag.getCompound("farmCenter");
+                farm.farmCenter = new Vec3(
+                        center.getDouble("x"),
+                        center.getDouble("y"),
+                        center.getDouble("z")
+                );
+            }
+
+            farm.currentRaidValue = tag.getInt("currentRaidValue");
+            farm.totalRaidValue = tag.getInt("totalRaidValue");
+            farm.originalFarmValue = tag.getInt("originalFarmValue");
+
+            return farm;
         }
 
         public void addChunk(ChunkPos chunk) {
@@ -410,8 +367,8 @@ public class FarmManager {
             return Collections.unmodifiableSet(chunks);
         }
 
-        public void addRawCrop(BlockPos pos, long currentTick, int value) {
-            rawCrops.put(pos, new CropRecord(currentTick, value));
+        public void addRawCrop(BlockPos pos, long currentTick) {
+            rawCrops.put(pos, currentTick);
         }
 
         public void removeRawCrop(BlockPos pos) {
@@ -420,10 +377,6 @@ public class FarmManager {
 
         public boolean containsRawCrop(BlockPos pos) {
             return rawCrops.containsKey(pos);
-        }
-
-        public int getRawCropCount() {
-            return rawCrops.size();
         }
 
         public boolean isSpentCrop(BlockPos pos) {
@@ -438,20 +391,19 @@ public class FarmManager {
             stabilityTimer = 0;
         }
 
-        public ArmorStand getHologram(ServerLevel level) {
-            if (hologramUUID == null) return null;
-            Entity entity = level.getEntity(hologramUUID);
-            return entity instanceof ArmorStand stand && stand.isAlive() ? stand : null;
+        public long getRaidCountdown(ServerLevel level) {
+            if (raidCountdownEndTick < 0) return 0;
+            return Math.max(0, raidCountdownEndTick - level.getGameTime());
         }
 
         public void tick(ServerLevel level) {
             if (raidActive) {
                 if (level.getGameTime() % 20 == 0) {
                     int guiValue = getGuiValue(level);
-                    syncFarmData(level, this, guiValue);
+                    RaidManager.syncFarmData(level, this, guiValue);
                 }
-
-                if (spawnedMobs.isEmpty()) {
+                if (mobsSpawned && spawnedMobs.isEmpty()) {
+                    LOGGER.info("[FARM_TICK] All mobs dead, ending raid for farm {}", mainChunk);
                     raidActive = false;
                     mobsSpawned = false;
                     accumulatedValue = 0;
@@ -459,34 +411,30 @@ public class FarmManager {
                     spentCrops.clear();
                     unlockAllChunks(level);
                     RaidManager.onRaidComplete(level, this);
-                    removeHologram(level);
+                    FarmManager.getData(level).setDirty();
                 }
-
                 return;
             }
 
             if (level.getGameTime() % 20 == 0) {
                 int guiValue = getGuiValue(level);
-                syncFarmData(level, this, guiValue);
+                RaidManager.syncFarmData(level, this, guiValue);
             }
 
-            if (raidCountdown > 0) {
-                raidCountdown--;
-
+            if (raidCountdownEndTick > 0) {
+                long remaining = raidCountdownEndTick - level.getGameTime();
+                if (remaining <= 0) {
+                    startRaid(level);
+                    return;
+                }
                 if (level.getGameTime() % 20 == 0) {
                     updateHologram(level);
                 }
-
-                if (raidCountdown <= 0) {
-                    startRaid(level);
-                }
-
                 return;
             }
 
             if (!rawCrops.isEmpty()) {
                 stabilityTimer++;
-
                 if (stabilityTimer >= Config.STABILITY_DELAY_TICKS.get()) {
                     extractValue(level);
                 }
@@ -497,27 +445,23 @@ public class FarmManager {
             if (raidActive) {
                 return RaidManager.getDisplayValue(this);
             }
-
             int rawValue = 0;
-            for (CropRecord record : rawCrops.values()) {
-                rawValue += record.value;
+            for (BlockPos pos : rawCrops.keySet()) {
+                BlockState state = level.getBlockState(pos);
+                rawValue += CropScanningHandler.getCropValue(state);
             }
-
             return accumulatedValue + rawValue;
         }
 
         private void extractValue(ServerLevel level) {
             int totalValue = 0;
-            Vec3 center = calculateCenter();
-
-            for (CropRecord record : rawCrops.values()) {
-                totalValue += record.value;
-            }
-
+            Vec3 center = calculateCenter(level);
             for (BlockPos pos : rawCrops.keySet()) {
+                BlockState state = level.getBlockState(pos);
+                int value = CropScanningHandler.getCropValue(state);
+                totalValue += value;
                 spentCrops.add(pos);
             }
-
             accumulatedValue += totalValue;
             rawCrops.clear();
             stabilityTimer = 0;
@@ -526,90 +470,72 @@ public class FarmManager {
                 farmCenter = center;
             }
 
-            if (accumulatedValue > 0 && raidCountdown <= 0) {
-                raidCountdown = Config.RAID_COUNTDOWN_TICKS.get();
-                long lockDuration = Config.RAID_COUNTDOWN_TICKS.get() + 24000L;
+            LOGGER.info("[EXTRACT] Extracted {} value, total accumulated: {}, center: {}",
+                    totalValue, accumulatedValue, farmCenter);
+
+            if (accumulatedValue > 0 && raidCountdownEndTick <= 0) {
+                long countdown = Config.RAID_COUNTDOWN_TICKS.get();
+                raidCountdownEndTick = level.getGameTime() + countdown;
+                long lockDuration = countdown + 24000L;
                 lockAllChunks(level, level.getGameTime() + lockDuration);
                 spawnHologram(level);
                 RaidManager.onRaidScheduled(level, this, accumulatedValue);
+                FarmManager.getData(level).setDirty();
             }
         }
 
-        private Vec3 calculateCenter() {
+        private Vec3 calculateCenter(ServerLevel level) {
             if (rawCrops.isEmpty()) return null;
-
             double sumX = 0, sumY = 0, sumZ = 0;
             int count = 0;
-
             for (BlockPos pos : rawCrops.keySet()) {
                 sumX += pos.getX() + 0.5;
-                sumY += pos.getY() + 1.5;
+                sumY += pos.getY();
                 sumZ += pos.getZ() + 0.5;
                 count++;
             }
-
             if (count == 0) return null;
-
             return new Vec3(sumX / count, sumY / count, sumZ / count);
         }
 
         private void spawnHologram(ServerLevel level) {
             if (farmCenter == null) return;
-
             ArmorStand stand = EntityType.ARMOR_STAND.create(level);
-
             if (stand != null) {
-                stand.setPos(farmCenter.x, farmCenter.y, farmCenter.z);
+                stand.setPos(farmCenter.x, farmCenter.y - 1.0, farmCenter.z);
                 stand.setInvisible(true);
                 stand.setNoGravity(true);
                 stand.setInvulnerable(true);
                 stand.setCustomNameVisible(true);
                 stand.setNoBasePlate(true);
-
-                long seconds = raidCountdown / 20;
+                long seconds = getRaidCountdown(level) / 20;
                 long minutes = seconds / 60;
                 long secs = seconds % 60;
                 String timeStr = String.format("%02d:%02d", minutes, secs);
-
-                stand.setCustomName(Component.literal(timeStr)
-                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
-
+                stand.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
                 level.addFreshEntity(stand);
                 hologramUUID = stand.getUUID();
+                LOGGER.info("[HOLOGRAM] Spawned at {}", farmCenter);
             }
         }
 
         private void updateHologram(ServerLevel level) {
-            ArmorStand stand = getHologram(level);
-            if (stand == null) return;
-
-            long seconds = raidCountdown / 20;
-            long minutes = seconds / 60;
-            long secs = seconds % 60;
-            String timeStr = String.format("%02d:%02d", minutes, secs);
-
-            stand.setCustomName(Component.literal(timeStr)
-                    .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
-        }
-
-        private void updateHologramForRaid(ServerLevel level) {
-            ArmorStand stand = getHologram(level);
-
-            if (stand == null) {
-                spawnHologram(level);
-                stand = getHologram(level);
-            }
-
-            if (stand != null) {
-                stand.setCustomName(Component.literal("⚠ РЕЙД ⚠")
-                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+            if (hologramUUID == null) return;
+            Entity entity = level.getEntity(hologramUUID);
+            if (entity instanceof ArmorStand stand && stand.isAlive()) {
+                long seconds = getRaidCountdown(level) / 20;
+                long minutes = seconds / 60;
+                long secs = seconds % 60;
+                String timeStr = String.format("%02d:%02d", minutes, secs);
+                stand.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
             }
         }
 
         private void removeHologram(ServerLevel level) {
-            ArmorStand stand = getHologram(level);
-            if (stand != null) {
-                stand.discard();
+            if (hologramUUID == null) return;
+            Entity entity = level.getEntity(hologramUUID);
+            if (entity != null && entity.isAlive()) {
+                entity.discard();
             }
             hologramUUID = null;
         }
@@ -621,20 +547,14 @@ public class FarmManager {
         private void startRaid(ServerLevel level) {
             raidActive = true;
             mobsSpawned = false;
-
-            updateHologramForRaid(level);
-
-            boolean success = RaidManager.executeRaid(level, this, accumulatedValue, farmCenter);
-
-            if (!success) {
-                raidActive = false;
-                unlockAllChunks(level);
-            }
+            removeHologram(level);
+            LOGGER.info("[RAID_START] Starting raid for farm {} with value: {}", mainChunk, accumulatedValue);
+            RaidManager.executeRaid(level, this, accumulatedValue, farmCenter);
+            FarmManager.getData(level).setDirty();
         }
 
         private void lockAllChunks(ServerLevel level, long until) {
             int radius = Config.LOCKDOWN_RADIUS.get();
-
             for (ChunkPos farmChunk : chunks) {
                 for (int dx = -radius; dx <= radius; dx++) {
                     for (int dz = -radius; dz <= radius; dz++) {
@@ -647,7 +567,6 @@ public class FarmManager {
 
         private void unlockAllChunks(ServerLevel level) {
             int radius = Config.LOCKDOWN_RADIUS.get();
-
             for (ChunkPos farmChunk : chunks) {
                 for (int dx = -radius; dx <= radius; dx++) {
                     for (int dz = -radius; dz <= radius; dz++) {
@@ -659,20 +578,15 @@ public class FarmManager {
         }
 
         public boolean isEmpty() {
-            return rawCrops.isEmpty() && accumulatedValue == 0 && !raidActive;
+            return rawCrops.isEmpty() && accumulatedValue == 0 && !raidActive && spawnedMobs.isEmpty();
         }
 
-        public boolean isRaidActive() {
-            return raidActive;
-        }
-
-        public int getAccumulatedValue() {
-            return accumulatedValue;
-        }
-
-        public ChunkPos getMainChunk() {
-            return mainChunk;
-        }
+        public boolean isRaidActive() { return raidActive; }
+        public int getAccumulatedValue() { return accumulatedValue; }
+        public ChunkPos getMainChunk() { return mainChunk; }
+        public void setAccumulatedValue(int value) { this.accumulatedValue = value; }
+        public Vec3 getFarmCenter() { return farmCenter; }
+        public int getSpentCropCount() { return spentCrops.size(); }
 
         public void addSpawnedMob(UUID mobUUID) {
             spawnedMobs.add(mobUUID);
@@ -683,20 +597,18 @@ public class FarmManager {
             spawnedMobs.remove(mobUUID);
         }
 
-        public int getSpawnedMobCount() {
-            return spawnedMobs.size();
-        }
+        public int getSpawnedMobCount() { return spawnedMobs.size(); }
 
-        public Vec3 getFarmCenter() {
-            return farmCenter;
-        }
-
-        public long getRaidCountdown() {
-            return raidCountdown;
-        }
-
-        public int getSpentCropCount() {
-            return spentCrops.size();
+        public int getCurrentRaidValue() { return currentRaidValue; }
+        public void setCurrentRaidValue(int v) { this.currentRaidValue = v; }
+        public int getTotalRaidValue() { return totalRaidValue; }
+        public void setTotalRaidValue(int v) { this.totalRaidValue = v; }
+        public int getOriginalFarmValue() { return originalFarmValue; }
+        public void setOriginalFarmValue(int v) { this.originalFarmValue = v; }
+        public void resetRaidValues() {
+            this.currentRaidValue = 0;
+            this.totalRaidValue = 0;
+            this.originalFarmValue = 0;
         }
     }
 }
