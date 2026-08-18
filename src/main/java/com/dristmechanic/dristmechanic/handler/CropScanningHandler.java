@@ -71,7 +71,10 @@ public class CropScanningHandler {
         ChunkPos chunkPos = new ChunkPos(pos);
 
         if (isChunkLocked(level, chunkPos)) {
-            event.setCanceled(true);
+            int value = getCropValue(event.getPlacedBlock());
+            if (value > 0) {
+                event.setCanceled(true);
+            }
             return;
         }
 

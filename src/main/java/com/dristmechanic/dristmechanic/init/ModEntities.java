@@ -23,7 +23,7 @@ public class ModEntities {
     public static final DeferredHolder<EntityType<?>, EntityType<FarmbotEntity>> FARMBOT =
             ENTITIES.register("farmbot",
                     () -> EntityType.Builder.of(FarmbotEntity::new, MobCategory.CREATURE)
-                            .sized(0.9F, 1.8F)
+                            .sized(1.9F, 2.8F)
                             .clientTrackingRange(10)
                             .build("farmbot")
             );
@@ -39,7 +39,7 @@ public class ModEntities {
     public static final DeferredHolder<EntityType<?>, EntityType<RedTapebotEntity>> RED_TAPEBOT =
             ENTITIES.register("red_tapebot",
                     () -> EntityType.Builder.of(RedTapebotEntity::new, MobCategory.CREATURE)
-                            .sized(0.6F, 1.8F)
+                            .sized(0.6F, 1.9F)
                             .clientTrackingRange(10)
                             .build("red_tapebot")
             );
@@ -47,7 +47,7 @@ public class ModEntities {
     public static final DeferredHolder<EntityType<?>, EntityType<TapebotEntity>> TAPEBOT =
             ENTITIES.register("tapebot",
                     () -> EntityType.Builder.of(TapebotEntity::new, MobCategory.CREATURE)
-                            .sized(0.6F, 1.8F)
+                            .sized(0.6F, 1.9F)
                             .clientTrackingRange(10)
                             .build("tapebot")
             );

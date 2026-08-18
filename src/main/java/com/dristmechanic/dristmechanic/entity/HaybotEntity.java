@@ -4,6 +4,8 @@ import com.dristmechanic.dristmechanic.Dristmechanic;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
@@ -86,7 +88,7 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 22.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.45D)
+                .add(Attributes.MOVEMENT_SPEED, 0.4D)
                 .add(Attributes.ATTACK_DAMAGE, 7.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.7D)
@@ -153,6 +155,15 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
         }
     }
 
+    @Override
+    protected SoundEvent getHurtSound(DamageSource damageSource) {
+        return SoundEvents.ANVIL_PLACE;
+    }
+
+    @Override
+    protected SoundEvent getDeathSound() {
+        return SoundEvents.ANVIL_PLACE;
+    }
     public static class MoveToRaidCenterGoal extends Goal {
         private final HaybotEntity mob;
         private final double speedModifier;

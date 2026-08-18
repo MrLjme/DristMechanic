@@ -8,6 +8,8 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
@@ -211,6 +213,16 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
                     tag.getInt("RaidTargetZ")
             );
         }
+    }
+
+    @Override
+    protected SoundEvent getHurtSound(DamageSource damageSource) {
+        return SoundEvents.ANVIL_PLACE;
+    }
+
+    @Override
+    protected SoundEvent getDeathSound() {
+        return SoundEvents.ANVIL_PLACE;
     }
 
     public static class MoveToRaidCenterGoal extends Goal {

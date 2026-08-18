@@ -62,9 +62,30 @@ public class SmoothPathNavigation extends GroundPathNavigation {
         Vec3 endPos = new Vec3(end.x + 0.5, end.y + 0.5, end.z + 0.5);
 
         BlockHitResult result = this.level.clip(new ClipContext(
-                startPos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this.mob
+                startPos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, this.mob
         ));
 
-        return result.getType() == HitResult.Type.MISS;
+        if (result.getType() != HitResult.Type.MISS) return false;
+
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        int minX = Math.min(start.x, end.x);
+        int maxX = Math.max(start.x, end.x);
+        int minY = Math.min(start.y, end.y);
+        int maxY = Math.max(start.y, end.y);
+        int minZ = Math.min(start.z, end.z);
+        int maxZ = Math.max(start.z, end.z);
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    mutable.set(x, y, z);
+                    if (this.level.getBlockState(mutable).getFluidState().is(net.minecraft.tags.FluidTags.LAVA)) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 }
