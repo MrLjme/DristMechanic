@@ -26,7 +26,20 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 public class HaybotEntity extends Monster implements AnimatedAttacker {
+    private int miningTicks = 0;
+    private int miningRequiredTicks = 0;
 
+    @Override
+    public int getMiningTicks() { return miningTicks; }
+
+    @Override
+    public void setMiningTicks(int ticks) { this.miningTicks = ticks; }
+
+    @Override
+    public int getMiningRequiredTicks() { return miningRequiredTicks; }
+
+    @Override
+    public void setMiningRequiredTicks(int ticks) { this.miningRequiredTicks = ticks; }
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
     private int attackTicks = 0;

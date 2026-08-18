@@ -234,6 +234,14 @@ public class FarmManager {
             return Math.max(0, raidCountdownEndTick);
         }
 
+        public Set<BlockPos> getSpentCrops() {
+            return Collections.unmodifiableSet(spentCrops);
+        }
+
+        public Set<BlockPos> getRawCrops() {
+            return Collections.unmodifiableSet(rawCrops.keySet());
+        }
+
         public CompoundTag serialize() {
             CompoundTag tag = new CompoundTag();
             tag.putInt("mainX", mainChunk.x);
