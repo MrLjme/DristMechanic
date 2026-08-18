@@ -14,7 +14,7 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<TotebotEntity>> TOTEBOT =
             ENTITIES.register("totebot",
-                    () -> EntityType.Builder.of(TotebotEntity::new, MobCategory.CREATURE)
+                    () -> EntityType.Builder.of(TotebotEntity::new, MobCategory.MONSTER)
                             .sized(0.6F, 1.8F)
                             .clientTrackingRange(10)
                             .build("totebot")
@@ -22,7 +22,7 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<FarmbotEntity>> FARMBOT =
             ENTITIES.register("farmbot",
-                    () -> EntityType.Builder.of(FarmbotEntity::new, MobCategory.CREATURE)
+                    () -> EntityType.Builder.of(FarmbotEntity::new, MobCategory.MONSTER)
                             .sized(1.9F, 2.8F)
                             .clientTrackingRange(10)
                             .build("farmbot")
@@ -30,7 +30,7 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<HaybotEntity>> HAYBOT =
             ENTITIES.register("haybot",
-                    () -> EntityType.Builder.of(HaybotEntity::new, MobCategory.CREATURE)
+                    () -> EntityType.Builder.of(HaybotEntity::new, MobCategory.MONSTER)
                             .sized(0.6F, 1.5F)
                             .clientTrackingRange(10)
                             .build("haybot")
@@ -38,7 +38,7 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<RedTapebotEntity>> RED_TAPEBOT =
             ENTITIES.register("red_tapebot",
-                    () -> EntityType.Builder.of(RedTapebotEntity::new, MobCategory.CREATURE)
+                    () -> EntityType.Builder.of(RedTapebotEntity::new, MobCategory.MONSTER)
                             .sized(0.6F, 1.9F)
                             .clientTrackingRange(10)
                             .build("red_tapebot")
@@ -46,7 +46,7 @@ public class ModEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<TapebotEntity>> TAPEBOT =
             ENTITIES.register("tapebot",
-                    () -> EntityType.Builder.of(TapebotEntity::new, MobCategory.CREATURE)
+                    () -> EntityType.Builder.of(TapebotEntity::new, MobCategory.MONSTER)
                             .sized(0.6F, 1.9F)
                             .clientTrackingRange(10)
                             .build("tapebot")

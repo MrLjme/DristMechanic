@@ -24,7 +24,7 @@ public class RaidHUD {
 
     private static final long EXPIRE_MS = 5000;
     private static final Map<Long, FarmDisplayData> farmsData = new ConcurrentHashMap<>();
-
+    private static final double MAX_RENDER_DISTANCE_SQ = 70.0 * 70.0;
     private record FarmDisplayData(
             double centerX,
             double centerZ,
@@ -55,14 +55,20 @@ public class RaidHUD {
     private static FarmDisplayData findNearest() {
         Player player = Minecraft.getInstance().player;
         if (player == null || farmsData.isEmpty()) return null;
+
         FarmDisplayData best = null;
         double bestDist = Double.MAX_VALUE;
+
         for (FarmDisplayData d : farmsData.values()) {
             double dx = player.getX() - d.centerX();
             double dz = player.getZ() - d.centerZ();
-            double dist = dx * dx + dz * dz;
-            if (dist < bestDist) {
-                bestDist = dist;
+            double distSq = dx * dx + dz * dz;
+
+            // Пропускаем фермы дальше 70 блоков
+            if (distSq > MAX_RENDER_DISTANCE_SQ) continue;
+
+            if (distSq < bestDist) {
+                bestDist = distSq;
                 best = d;
             }
         }

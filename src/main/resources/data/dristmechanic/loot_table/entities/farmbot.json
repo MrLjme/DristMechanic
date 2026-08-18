@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:entity",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        { "type": "minecraft:item", "name": "create:crushed_raw_gold", "weight": 4 },
+        { "type": "minecraft:item", "name": "create:crushed_raw_iron", "weight": 8 },
+        { "type": "minecraft:item", "name": "create:andesite_alloy", "weight": 6 },
+        { "type": "minecraft:item", "name": "create:large_cogwheel", "weight": 2 }
+      ]
+    }
+  ]
+}

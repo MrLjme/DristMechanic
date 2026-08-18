@@ -9,6 +9,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.ChunkPos;
@@ -350,6 +352,14 @@ public class RaidManager {
                 else if (mob instanceof HaybotEntity haybot) haybot.setRaidTarget(centerPos);
                 else if (mob instanceof TapebotEntity tapebot) tapebot.setRaidTarget(centerPos);
                 else if (mob instanceof RedTapebotEntity redTapebot) redTapebot.setRaidTarget(centerPos);
+
+                if (mob instanceof TotebotEntity totebot) totebot.setRaidTarget(centerPos);
+                else if (mob instanceof FarmbotEntity farmbot) farmbot.setRaidTarget(centerPos);
+                else if (mob instanceof HaybotEntity haybot) haybot.setRaidTarget(centerPos);
+                else if (mob instanceof TapebotEntity tapebot) tapebot.setRaidTarget(centerPos);
+                else if (mob instanceof RedTapebotEntity redTapebot) redTapebot.setRaidTarget(centerPos);
+
+                mob.addEffect(new MobEffectInstance(MobEffects.GLOWING, -1, 0, false, false));
 
                 level.addFreshEntity(mob);
             }

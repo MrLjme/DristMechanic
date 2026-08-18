@@ -87,7 +87,7 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
     @NotNull
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 22.0D)
+                .add(Attributes.MAX_HEALTH, 25.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
                 .add(Attributes.ATTACK_DAMAGE, 7.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)

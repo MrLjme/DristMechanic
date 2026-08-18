@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:entity",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        { "type": "minecraft:item", "name": "create:crushed_raw_copper", "weight": 8 },
+        { "type": "minecraft:item", "name": "create:shaft", "weight": 12 },
+        { "type": "minecraft:item", "name": "create:cogwheel", "weight": 6 }
+      ]
+    }
+  ]
+}
