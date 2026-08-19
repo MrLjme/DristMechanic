@@ -20,8 +20,8 @@ public class Config {
                     "minecraft:carrots=2",
                     "minecraft:potatoes=3",
                     "minecraft:beetroots=1",
-                    "minecraft:attached_melon_stem=7",
-                    "minecraft:attached_pumpkin_stem=7",
+                    "minecraft:melon_stem=5",
+                    "minecraft:pumpkin_stem=5",
                     "farmersdelight:budding_tomatoes=3",
                     "farmersdelight:onions=3",
                     "farmersdelight:cabbages=3"

@@ -2,7 +2,7 @@
   "type": "minecraft:entity",
   "pools": [
     {
-      "rolls": 1,
+      "rolls": 4,
       "entries": [
         { "type": "minecraft:item", "name": "create:crushed_raw_iron", "weight": 12 },
         { "type": "minecraft:item", "name": "create:crushed_raw_zinc", "weight": 6 },
