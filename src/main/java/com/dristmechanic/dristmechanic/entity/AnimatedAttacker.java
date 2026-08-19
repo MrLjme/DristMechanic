@@ -6,10 +6,13 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public interface AnimatedAttacker {
@@ -17,30 +20,23 @@ public interface AnimatedAttacker {
     boolean isAttackingState();
     int getAttackAnimationLength();
     int getAttackImpactFrame();
+
     int getStuckTicks();
     void setStuckTicks(int ticks);
     Vec3 getLastPos();
     void setLastPos(Vec3 pos);
+
     int getAttackTicks();
     void setAttackTicks(int ticks);
     BlockPos getBreakingBlock();
     void setBreakingBlock(BlockPos pos);
 
-    int getMiningTicks();
-    void setMiningTicks(int ticks);
-    int getMiningRequiredTicks();
-    void setMiningRequiredTicks(int ticks);
-
     int STUCK_THRESHOLD = 15;
     double RAY_CAST_DISTANCE = 3.0D;
-    float MOB_MINING_SPEED = 2.0F;
 
     default void startBreakingBlock(PathfinderMob mob, BlockPos pos) {
-        if (!canBreakBlock(mob.level(), pos)) return;
-
         setBreakingBlock(pos);
-        setMiningTicks(0);
-        setMiningRequiredTicks(getMiningDurationTicks(mob, mob.level(), pos));
+        setAttackTicks(0);
         setAttackingState(true);
         mob.getNavigation().stop();
     }
@@ -49,30 +45,21 @@ public interface AnimatedAttacker {
         BlockPos pos = getBreakingBlock();
         if (pos == null) return false;
 
-        int ticks = getMiningTicks() + 1;
-        setMiningTicks(ticks);
+        int ticks = getAttackTicks() + 1;
+        setAttackTicks(ticks);
 
         mob.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 30.0F, 30.0F);
 
-        int requiredTicks = getMiningRequiredTicks();
-        int animationLength = getAttackAnimationLength();
-        int impactFrame = getAttackImpactFrame();
-
-        int animationCycle = (ticks - 1) % animationLength;
-        if (animationCycle == impactFrame - 1) {
-            playBreakSound(mob.level(), pos);
-            spawnBreakParticles(mob.level(), pos);
+        if (ticks == getAttackImpactFrame()) {
+            attemptBreakBlock(mob, pos, dropItems);
         }
 
-        if (ticks >= requiredTicks) {
-            breakBlock(mob.level(), pos, dropItems);
+        if (ticks >= getAttackAnimationLength()) {
             setAttackingState(false);
             setBreakingBlock(null);
-            setMiningTicks(0);
-            setMiningRequiredTicks(0);
+            setAttackTicks(0);
             return false;
         }
-
         return true;
     }
 
@@ -86,7 +73,6 @@ public interface AnimatedAttacker {
             if (mob.position().distanceToSqr(lastPos) > 0.01D) stuckTicks = 0;
             else stuckTicks++;
         }
-
         setLastPos(mob.position());
         setStuckTicks(stuckTicks);
 
@@ -111,93 +97,91 @@ public interface AnimatedAttacker {
         Level level = mob.level();
         if (level.isClientSide()) return null;
 
-        Vec3 mobPos = mob.position();
-        Vec3 direction = target.subtract(mobPos).normalize();
+        Vec3 mobBottom = mob.position();
+        double dxH = target.x - mobBottom.x;
+        double dy = target.y - mobBottom.y;
+        double dzH = target.z - mobBottom.z;
+        double horizontalDistSq = dxH * dxH + dzH * dzH;
 
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        Vec3 aimVec;
+        if (horizontalDistSq < 0.01D) {
+            aimVec = new Vec3(0.0D, dy > 0 ? 1.0D : -1.0D, 0.0D);
+        } else {
+            Vec3 horizontalVec;
+            if (Math.abs(dxH) >= Math.abs(dzH)) {
+                horizontalVec = new Vec3(dxH > 0 ? 1.0D : -1.0D, 0.0D, 0.0D);
+            } else {
+                horizontalVec = new Vec3(0.0D, 0.0D, dzH > 0 ? 1.0D : -1.0D);
+            }
 
-        int searchRadius = 2;
-        for (int dy = 0; dy <= 1; dy++) {
-            for (int dx = -searchRadius; dx <= searchRadius; dx++) {
-                for (int dz = -searchRadius; dz <= searchRadius; dz++) {
-                    mutable.set(
-                            (int) Math.floor(mobPos.x) + dx,
-                            (int) Math.floor(mobPos.y) + dy,
-                            (int) Math.floor(mobPos.z) + dz
-                    );
+            double heightThresholdUp = 1.0D;
+            double heightThresholdDown = -0.5D; // Порог для рытья строго вниз
 
-                    if (canBreakBlock(level, mutable)) {
-                        double dist = mobPos.distanceToSqr(Vec3.atBottomCenterOf(mutable));
-                        if (dist <= RAY_CAST_DISTANCE * RAY_CAST_DISTANCE) {
-                            return mutable.immutable();
-                        }
+            if (dy > heightThresholdUp) {
+                // Лесенка вверх
+                aimVec = new Vec3(horizontalVec.x, 1.0D, horizontalVec.z).normalize();
+            } else if (dy < heightThresholdDown) {
+                // СТРОГО ВНИЗ
+                aimVec = new Vec3(0.0D, -1.0D, 0.0D);
+            } else {
+                // Прямо
+                aimVec = horizontalVec;
+            }
+        }
+
+        Vec3 startPosHead = mob.position().add(0.0D, 1.5D, 0.0D);
+        Vec3 startPosLegs = mob.position().add(0.0D, 0.5D, 0.0D);
+        Vec3 endPosHead = startPosHead.add(aimVec.scale(RAY_CAST_DISTANCE));
+        Vec3 endPosLegs = startPosLegs.add(aimVec.scale(RAY_CAST_DISTANCE));
+
+        ClipContext contextHead = new ClipContext(startPosHead, endPosHead, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mob);
+        ClipContext contextLegs = new ClipContext(startPosLegs, endPosLegs, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mob);
+
+        BlockHitResult hitResultHead = level.clip(contextHead);
+        BlockHitResult hitResultLegs = level.clip(contextLegs);
+
+        BlockPos bestPos = null;
+        double minDist = Double.MAX_VALUE;
+
+        for (BlockHitResult hit : new BlockHitResult[]{hitResultHead, hitResultLegs}) {
+            if (hit.getType() == HitResult.Type.BLOCK) {
+                BlockPos pos = hit.getBlockPos();
+                BlockState state = level.getBlockState(pos);
+                if (!state.isAir() && state.getFluidState().isEmpty() && state.getDestroySpeed(level, pos) >= 0.0F) {
+                    double dist = hit.getLocation().distanceToSqr(mob.position().add(0, 1.0, 0));
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestPos = pos;
                     }
                 }
             }
         }
-
-        return null;
+        return bestPos;
     }
 
-    default boolean canBreakBlock(Level level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        if (state.isAir()) return false;
-        float hardness = state.getDestroySpeed(level, pos);
-        return hardness >= 0 && hardness <= 5.0F;
-    }
-
-    default int getMiningDurationTicks(PathfinderMob mob, Level level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        if (state.isAir()) return 0;
-
-        float hardness = state.getDestroySpeed(level, pos);
-        if (hardness < 0) return Integer.MAX_VALUE;
-
-        float digSpeed = MOB_MINING_SPEED;
-
-        if (!mob.onGround()) {
-            digSpeed /= 5.0F;
-        }
-
-        if (mob.isInWater()) {
-            digSpeed /= 5.0F;
-        }
-
-        if (digSpeed <= 0) {
-            return Integer.MAX_VALUE;
-        }
-
-        return (int) Math.ceil((1.0F / digSpeed) * hardness * 20.0F);
-    }
-
-    default void playBreakSound(Level level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        if (state.isAir()) return;
-
-        SoundType soundType = state.getSoundType(level, pos, null);
-        level.playSound(null, pos, soundType.getHitSound(), SoundSource.BLOCKS,
-                soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
-    }
-
-    default void spawnBreakParticles(Level level, BlockPos pos) {
-        if (!(level instanceof ServerLevel serverLevel)) return;
-
-        BlockState state = level.getBlockState(pos);
-        if (state.isAir()) return;
-
-        BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
-        serverLevel.sendParticles(particleOption,
-                pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D,
-                25, 0.3D, 0.3D, 0.3D, 0.1D);
-    }
-
-    default void breakBlock(Level level, BlockPos pos, boolean dropItems) {
+    default void attemptBreakBlock(PathfinderMob mob, BlockPos pos, boolean dropItems) {
+        Level level = mob.level();
         if (level.isClientSide()) return;
-
         BlockState state = level.getBlockState(pos);
-        if (state.isAir()) return;
+        if (state.isAir() || !state.getFluidState().isEmpty()) return;
 
-        level.destroyBlock(pos, dropItems);
-        level.levelEvent(2001, pos, Block.getId(state));
+        float hardness = state.getDestroySpeed(level, pos);
+        if (hardness < 0.0F) return;
+
+        SoundType soundType = state.getSoundType(level, pos, mob);
+        level.playSound(null, pos, soundType.getHitSound(), SoundSource.BLOCKS, soundType.getVolume() * 0.5F, soundType.getPitch() * 0.875F);
+
+        float chancePercent = 100.0F / (1.0F + hardness * 2.5F);
+        boolean blockBroken = mob.getRandom().nextFloat() * 100.0F < chancePercent;
+
+        if (blockBroken) {
+            level.destroyBlock(pos, dropItems);
+            level.levelEvent(2001, pos, Block.getId(state));
+        }
+
+        if (level instanceof ServerLevel serverLevel) {
+            BlockParticleOption particleOption = new BlockParticleOption(ParticleTypes.BLOCK, state);
+            serverLevel.sendParticles(particleOption, pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, 25, 0.3D, 0.3D, 0.3D, 0.1D);
+        }
     }
 }

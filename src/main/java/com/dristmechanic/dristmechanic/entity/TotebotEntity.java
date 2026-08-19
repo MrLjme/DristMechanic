@@ -1,15 +1,18 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
-import com.dristmechanic.dristmechanic.entity.BaritoneStyleNavigation;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -34,14 +37,18 @@ import java.util.EnumSet;
 public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacker {
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
     private static final EntityDataAccessor<Boolean> ATTACKING = SynchedEntityData.defineId(TotebotEntity.class, EntityDataSerializers.BOOLEAN);
+
     private BlockPos raidTarget;
+
     private int stuckTicks = 0;
+
     private Vec3 lastPos = null;
+
     private int attackTicks = 0;
+
     private BlockPos breakingBlock = null;
-    private int miningTicks = 0;
-    private int miningRequiredTicks = 0;
 
     @Override
     public int getStuckTicks() { return stuckTicks; }
@@ -67,18 +74,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     public void setBreakingBlock(BlockPos pos) { this.breakingBlock = pos; }
 
-    @Override
-    public int getMiningTicks() { return miningTicks; }
-
-    @Override
-    public void setMiningTicks(int ticks) { this.miningTicks = ticks; }
-
-    @Override
-    public int getMiningRequiredTicks() { return miningRequiredTicks; }
-
-    @Override
-    public void setMiningRequiredTicks(int ticks) { this.miningRequiredTicks = ticks; }
-
     public BlockPos getRaidTarget() { return raidTarget; }
 
     public void setRaidTarget(BlockPos raidTarget) { this.raidTarget = raidTarget; }
@@ -96,7 +91,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     @NotNull
     protected PathNavigation createNavigation(@NotNull Level level) {
-        return new BaritoneStyleNavigation(this, level);
+        return new SmoothPathNavigation(this, level);
     }
 
     @NotNull
@@ -104,7 +99,7 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 16.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
-                .add(Attributes.ATTACK_DAMAGE, 7.0D)
+                .add(Attributes.ATTACK_DAMAGE, 3.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.7D)
                 .add(Attributes.JUMP_STRENGTH, 0.0D)
@@ -114,16 +109,45 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
+        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
-        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 1.0D, 16, 1));
+        this.goalSelector.addGoal(3, new RemoveCropGoal(this, 1.0D, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && TotebotEntity.this.getRaidTarget() != null && TotebotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && TotebotEntity.this.getRaidTarget() != null && TotebotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.npc.Villager.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && TotebotEntity.this.getRaidTarget() != null && TotebotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.IronGolem.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && TotebotEntity.this.getRaidTarget() != null && TotebotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
     }
-
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
@@ -219,6 +243,16 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
                     tag.getInt("RaidTargetZ")
             );
         }
+    }
+
+    @Override
+    protected SoundEvent getHurtSound(DamageSource damageSource) {
+        return SoundEvents.ANVIL_PLACE;
+    }
+
+    @Override
+    protected SoundEvent getDeathSound() {
+        return SoundEvents.ANVIL_PLACE;
     }
 
     public static class MoveToRaidCenterGoal extends Goal {

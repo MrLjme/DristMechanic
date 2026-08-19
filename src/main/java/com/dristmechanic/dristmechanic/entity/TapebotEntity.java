@@ -36,7 +36,7 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 10.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.45D)
+                .add(Attributes.MOVEMENT_SPEED, 0.35D)
                 .add(Attributes.FOLLOW_RANGE, 32.0D);
     }
 
@@ -57,6 +57,18 @@ public class TapebotEntity extends Monster implements RangedAttackMob {
         this.goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new RandomLookAroundGoal(this));
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        double speed = this.isAggressive() ? 0.35 : 0.3;
+        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttribute != null) {
+            speedAttribute.setBaseValue(speed);
+        }
+        float smoothFactor = 0.4F;
+        this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
     }
 
     @Override

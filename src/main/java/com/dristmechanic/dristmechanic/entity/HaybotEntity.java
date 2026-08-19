@@ -8,6 +8,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -26,20 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 public class HaybotEntity extends Monster implements AnimatedAttacker {
-    private int miningTicks = 0;
-    private int miningRequiredTicks = 0;
 
-    @Override
-    public int getMiningTicks() { return miningTicks; }
-
-    @Override
-    public void setMiningTicks(int ticks) { this.miningTicks = ticks; }
-
-    @Override
-    public int getMiningRequiredTicks() { return miningRequiredTicks; }
-
-    @Override
-    public void setMiningRequiredTicks(int ticks) { this.miningRequiredTicks = ticks; }
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
     private int attackTicks = 0;
@@ -102,22 +90,65 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 25.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
-                .add(Attributes.ATTACK_DAMAGE, 7.0D)
+                .add(Attributes.ATTACK_DAMAGE, 5.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.7D)
                 .add(Attributes.FOLLOW_RANGE, 16.0D);
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        double speed = this.isAggressive() ? 0.35 : 0.3;
+        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttribute != null) {
+            speedAttribute.setBaseValue(speed);
+        }
+        float smoothFactor = 0.4F;
+        this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
+    }
+
+    @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
+        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true));
-        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 1.0D, 16, 1));
+        this.goalSelector.addGoal(3, new RemoveCropGoal(this, 1.0D, 1));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && HaybotEntity.this.getRaidTarget() != null && HaybotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && HaybotEntity.this.getRaidTarget() != null && HaybotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.npc.Villager.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && HaybotEntity.this.getRaidTarget() != null && HaybotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.IronGolem.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && HaybotEntity.this.getRaidTarget() != null && HaybotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
     }
 
     @Override

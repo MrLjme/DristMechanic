@@ -95,14 +95,6 @@ public class TapeEntity extends AbstractArrow implements ItemSupplier {
         }
     }
 
-    public static TapeEntity shoot(Level world, LivingEntity entity, RandomSource source) {
-        return shoot(world, entity, source, 1f, 15, 1);
-    }
-
-    public static TapeEntity shoot(Level world, LivingEntity entity, RandomSource source, float pullingPower) {
-        return shoot(world, entity, source, pullingPower * 1f, 10, 1);
-    }
-
     public static TapeEntity shoot(Level world, LivingEntity entity, RandomSource random, float power, double damage, int knockback) {
         TapeEntity entityarrow = new TapeEntity(ModEntities.TAPE.get(), entity, world, null);
         entityarrow.shoot(entity.getViewVector(1).x, entity.getViewVector(1).y, entity.getViewVector(1).z, power * 2, 0);
@@ -122,7 +114,7 @@ public class TapeEntity extends AbstractArrow implements ItemSupplier {
         double dz = target.getZ() - entity.getZ();
         entityarrow.shoot(dx, dy - entityarrow.getY() + Math.hypot(dx, dz) * 0.2F, dz, 1f * 2, 12.0F);
         entityarrow.setSilent(true);
-        entityarrow.setBaseDamage(10);
+        entityarrow.setBaseDamage(3);
         entityarrow.setKnockback(1);
         entityarrow.setCritArrow(false);
         entity.level().addFreshEntity(entityarrow);

@@ -27,20 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 
 public class FarmbotEntity extends Monster implements AnimatedAttacker {
-    private int miningTicks = 0;
-    private int miningRequiredTicks = 0;
 
-    @Override
-    public int getMiningTicks() { return miningTicks; }
-
-    @Override
-    public void setMiningTicks(int ticks) { this.miningTicks = ticks; }
-
-    @Override
-    public int getMiningRequiredTicks() { return miningRequiredTicks; }
-
-    @Override
-    public void setMiningRequiredTicks(int ticks) { this.miningRequiredTicks = ticks; }
     private int stuckTicks = 0;
     private Vec3 lastPos = null;
     private int attackTicks = 0;
@@ -101,7 +88,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     @NotNull
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 75.0D)
+                .add(Attributes.MAX_HEALTH, 100.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.45D)
                 .add(Attributes.ATTACK_DAMAGE, 10.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
@@ -110,15 +97,58 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        double speed = this.isAggressive() ? 0.45 : 0.35;
+        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttribute != null) {
+            speedAttribute.setBaseValue(speed);
+        }
+        float smoothFactor = 0.4F;
+        this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
+    }
+
+    @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(3, new MoveToRaidCenterGoal(this, 1.0D));
+        this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
         this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 1.4, 2.7, 90, true, false));
-        this.goalSelector.addGoal(2, new RemoveCropGoal(this, 1.0D, 16, 3));
+        this.goalSelector.addGoal(3, new RemoveCropGoal(this, 1.0D, 3));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(0, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false));
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && FarmbotEntity.this.getRaidTarget() != null && FarmbotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.Cow.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && FarmbotEntity.this.getRaidTarget() != null && FarmbotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.npc.Villager.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && FarmbotEntity.this.getRaidTarget() != null && FarmbotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.animal.IronGolem.class, false) {
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = this.mob.getTarget();
+                if (target != null && FarmbotEntity.this.getRaidTarget() != null && FarmbotEntity.this.distanceToSqr(target) > 16.0) return false;
+                return super.canContinueToUse();
+            }
+        });
     }
 
     @Override
