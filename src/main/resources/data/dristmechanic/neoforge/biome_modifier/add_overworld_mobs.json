@@ -2,8 +2,8 @@
   "type": "neoforge:add_spawns",
   "biomes": "#minecraft:is_overworld",
   "spawners": [
-    {"type": "dristmechanic:haybot", "weight": 30, "minCount": 1, "maxCount": 2},
-    {"type": "dristmechanic:totebot", "weight": 25, "minCount": 1, "maxCount": 1},
+    {"type": "dristmechanic:haybot", "weight": 20, "minCount": 1, "maxCount": 2},
+    {"type": "dristmechanic:totebot", "weight": 10, "minCount": 1, "maxCount": 1},
     {"type": "dristmechanic:farmbot", "weight": 1, "minCount": 1, "maxCount": 1}
   ]
 }
