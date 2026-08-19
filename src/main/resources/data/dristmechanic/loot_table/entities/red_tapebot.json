@@ -2,10 +2,10 @@
   "type": "minecraft:entity",
   "pools": [
     {
-      "rolls": 7,
+      "rolls": 30,
       "entries": [
         { "type": "minecraft:item", "name": "create:crushed_raw_zinc", "weight": 8 },
-        { "type": "minecraft:item", "name": "create:crushed_raw_copper", "weight": 6 },
+        { "type": "minecraft:item", "name": "create:crushed_raw_gold", "weight": 4 },
         { "type": "minecraft:item", "name": "create:cogwheel", "weight": 4 },
         { "type": "minecraft:item", "name": "create:large_cogwheel", "weight": 2 }
       ]

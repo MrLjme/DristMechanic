@@ -1,12 +1,8 @@
 package com.dristmechanic.dristmechanic.client.gui;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
-import net.minecraft.ChatFormatting;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.LayeredDraw;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
@@ -25,20 +21,14 @@ public class RaidHUD {
     private static final long EXPIRE_MS = 5000;
     private static final Map<Long, FarmDisplayData> farmsData = new ConcurrentHashMap<>();
     private static final double MAX_RENDER_DISTANCE_SQ = 70.0 * 70.0;
+
     private record FarmDisplayData(
-            double centerX,
-            double centerZ,
-            boolean active,
-            int currentValue,
-            int maxValue,
-            boolean raidActive,
-            long lastUpdateMs
-    ) {}
+            double centerX, double centerZ, boolean active,
+            int currentValue, int maxValue, boolean raidActive, long lastUpdateMs) {}
 
     public static void updateData(int farmX, int farmZ, double centerX, double centerZ,
                                   boolean active, int current, int max, boolean raid) {
-        long key = chunkKey(farmX, farmZ);
-        farmsData.put(key, new FarmDisplayData(
+        farmsData.put(chunkKey(farmX, farmZ), new FarmDisplayData(
                 centerX, centerZ, active, current, max, raid, System.currentTimeMillis()));
         cleanupExpired();
     }
@@ -63,10 +53,7 @@ public class RaidHUD {
             double dx = player.getX() - d.centerX();
             double dz = player.getZ() - d.centerZ();
             double distSq = dx * dx + dz * dz;
-
-            // Пропускаем фермы дальше 70 блоков
             if (distSq > MAX_RENDER_DISTANCE_SQ) continue;
-
             if (distSq < bestDist) {
                 bestDist = distSq;
                 best = d;
@@ -80,16 +67,13 @@ public class RaidHUD {
         event.registerAbove(
                 VanillaGuiLayers.HOTBAR,
                 ResourceLocation.fromNamespaceAndPath(Dristmechanic.MODID, "raid_hud"),
-                new LayeredDraw.Layer() {
-                    @Override
-                    public void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
-                        Minecraft mc = Minecraft.getInstance();
-                        if (mc.player == null) return;
-                        cleanupExpired();
-                        FarmDisplayData nearest = findNearest();
-                        if (nearest == null || nearest.currentValue() <= 0) return;
-                        draw(guiGraphics, nearest);
-                    }
+                (g, delta) -> {
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player == null) return;
+                    cleanupExpired();
+                    FarmDisplayData nearest = findNearest();
+                    if (nearest == null || nearest.currentValue() <= 0) return;
+                    draw(g, nearest);
                 }
         );
     }
@@ -99,82 +83,93 @@ public class RaidHUD {
     private static final int RED_MAX = 10000;
     private static final int PURPLE_MAX = 100000;
 
-    private static final int COLOR_YELLOW = 0xFFF2D24F;
-    private static final int COLOR_YELLOW_DIM = 0xFF6E5F23;
-    private static final int COLOR_ORANGE = 0xFFE1862C;
-    private static final int COLOR_ORANGE_DIM = 0xFF6E3F14;
-    private static final int COLOR_RED = 0xFFD21C1C;
-    private static final int COLOR_RED_DIM = 0xFF6E0E0E;
-    private static final int COLOR_PURPLE = 0xFF453A75;
-    private static final int COLOR_PURPLE_DIM = 0xFF2B2450;
-    private static final int COLOR_PURPLE_FRAME = 0xFF9C8FE0;
-    private static final int COLOR_FRAME = 0xFF9E1B1B;
+    private static final int INNER_ALPHA = 0xD9;
+
+    private static final int COLOR_YELLOW = 0xFFFDDB48;
+    private static final int COLOR_ORANGE = 0xFFF08229;
+    private static final int COLOR_RED = 0xFFC80403;
+    private static final int COLOR_DIM = 0xFF5E2A13;
+    private static final int COLOR_PURPLE = 0xFF5B4BC8;
+    private static final int COLOR_PURPLE_OUTLINE = 0xFF57508D;
+    private static final int COLOR_PURPLE_BAND = 0xFF453A75;
+    private static final int COLOR_FRAME = 0xFF3B0E0B;
 
     private static void draw(GuiGraphics g, FarmDisplayData data) {
-        int width = 200, height = 12, x = 10, y = 10, frame = 2;
-        int currentValue = data.currentValue();
-        boolean purple = currentValue >= RED_MAX;
-
-        g.fill(x - frame - 1, y - frame - 1, x + width + frame + 1, y + height + frame + 1, 0xFF000000);
-        g.fill(x - frame, y - frame, x + width + frame, y + height + frame,
-                purple ? COLOR_PURPLE_FRAME : COLOR_FRAME);
+        int gw = g.guiWidth();
+        int gh = g.guiHeight();
+        int width = Math.max(120, (int) (gw * 0.25F));
+        int height = Math.max(6, (int) (gh * 0.025F) - 1);
+        int x = (int) (gw * 0.025F);
+        int y = (int) (gh * 0.045F);
+        int value = data.currentValue();
+        boolean purple = value >= RED_MAX;
 
         if (purple) {
-            g.fill(x, y, x + width, y + height, COLOR_PURPLE_DIM);
-            float ratio = Mth.clamp(
-                    (currentValue - RED_MAX) / (float)(PURPLE_MAX - RED_MAX), 0.0F, 1.0F);
-            int fillW = (int)(width * ratio);
-            if (fillW > 0) g.fill(x, y, x + fillW, y + height, COLOR_PURPLE);
+            g.fill(x - 3, y - 3, x + width + 3, y + height + 3, COLOR_PURPLE_OUTLINE);
+            g.fill(x - 2, y - 2, x + width + 2, y + height + 2, COLOR_PURPLE_BAND);
+        } else {
+            g.fill(x - 3, y - 3, x + width + 3, y + height + 3, 0xFF7D1E17);
+            g.fill(x - 2, y - 2, x + width + 2, y + height + 2, COLOR_FRAME);
+        }
+
+        if (purple) {
+            float ratio = Mth.clamp((value - RED_MAX) / (float) (PURPLE_MAX - RED_MAX), 0F, 1F);
+            int fillW = (int) (width * ratio);
+            g.fillGradient(x, y, x + width, y + height,
+                    withAlpha(shade(COLOR_PURPLE, 0.25F), INNER_ALPHA),
+                    withAlpha(shade(COLOR_PURPLE, 0.45F), INNER_ALPHA));
+            if (fillW > 0) {
+                g.fillGradient(x, y, x + fillW, y + height,
+                        withAlpha(shade(COLOR_PURPLE, 0.7F), INNER_ALPHA),
+                        withAlpha(shade(COLOR_PURPLE, 1.3F), INNER_ALPHA));
+                g.fill(x, y, x + fillW, y + 1, 0x66FFFFFF);
+                g.fill(x, y + height - 1, x + fillW, y + height, 0x66000000);
+            }
         } else {
             int segW = width / 3;
-            int[] xs = {x, x + segW, x + segW * 2};
-            int[] dim = {COLOR_YELLOW_DIM, COLOR_ORANGE_DIM, COLOR_RED_DIM};
-            int[] bright = {COLOR_YELLOW, COLOR_ORANGE, COLOR_RED};
             int[] from = {0, YELLOW_MAX, ORANGE_MAX};
             int[] to = {YELLOW_MAX, ORANGE_MAX, RED_MAX};
+            int[] bright = {COLOR_YELLOW, COLOR_ORANGE, COLOR_RED};
 
             for (int i = 0; i < 3; i++) {
-                int w = (i == 2) ? (x + width - xs[i]) : segW;
-                g.fill(xs[i], y, xs[i] + w, y + height, dim[i]);
-                float ratio = Mth.clamp(
-                        (currentValue - from[i]) / (float)(to[i] - from[i]), 0.0F, 1.0F);
-                int fillW = (int)(w * ratio);
-                if (fillW > 0) g.fill(xs[i], y, xs[i] + fillW, y + height, bright[i]);
+                int sx = x + i * segW;
+                int sw = (i == 2) ? width - segW * 2 : segW;
+                g.fill(sx, y, sx + sw, y + height, withAlpha(COLOR_DIM, INNER_ALPHA));
+                float ratio = Mth.clamp((value - from[i]) / (float) (to[i] - from[i]), 0F, 1F);
+                int fillW = (int) (sw * ratio);
+                if (fillW > 0) {
+                    g.fillGradient(sx, y, sx + fillW, y + height,
+                            withAlpha(shade(bright[i], 0.75F), INNER_ALPHA),
+                            withAlpha(shade(bright[i], 1.25F), INNER_ALPHA));
+                    g.fill(sx, y, sx + fillW, y + 1, 0x55FFFFFF);
+                    g.fill(sx, y + height - 1, sx + fillW, y + height, 0x55000000);
+                }
+                if (i > 0) g.fill(sx, y, sx + 1, y + height, 0xB3000000);
             }
             drawDiamond(g, x + segW, y + height / 2, COLOR_RED);
             drawDiamond(g, x + segW * 2, y + height / 2, COLOR_RED);
-            g.fill(x + width - 2, y, x + width, y + height, 0xFFE8E8E8);
         }
-
-        Component text;
-        if (purple) {
-            text = Component.literal("THREAT: " + currentValue + "/" + PURPLE_MAX)
-                    .withStyle(ChatFormatting.DARK_PURPLE);
-        } else if (data.raidActive()) {
-            text = Component.literal("RAID: " + currentValue)
-                    .withStyle(ChatFormatting.RED);
-        } else if (data.active()) {
-            text = Component.literal("LICENSE BREACH: " + currentValue)
-                    .withStyle(ChatFormatting.RED);
-        } else {
-            text = Component.literal("THREAT: " + currentValue)
-                    .withStyle(ChatFormatting.YELLOW);
-        }
-        g.drawString(Minecraft.getInstance().font, text, x, y + height + 6, 0xFFFFFF, true);
     }
 
     private static void drawDiamond(GuiGraphics g, int cx, int cy, int color) {
         int[] bw = {1, 3, 5, 7, 5, 3, 1};
         for (int i = 0; i < bw.length; i++) {
-            int yy = cy - 3 + i;
-            int w = bw[i];
-            g.fill(cx - w / 2, yy, cx - w / 2 + w, yy + 1, 0xFF000000);
+            g.fill(cx - bw[i] / 2, cy - 3 + i, cx - bw[i] / 2 + bw[i], cy - 2 + i, 0xFF000000);
         }
         int[] cw = {1, 3, 5, 3, 1};
         for (int i = 0; i < cw.length; i++) {
-            int yy = cy - 2 + i;
-            int w = cw[i];
-            g.fill(cx - w / 2, yy, cx - w / 2 + w, yy + 1, color);
+            g.fill(cx - cw[i] / 2, cy - 2 + i, cx - cw[i] / 2 + cw[i], cy - 1 + i, color);
         }
+    }
+
+    private static int shade(int c, float f) {
+        int r = Mth.clamp((int) (((c >> 16) & 0xFF) * f), 0, 255);
+        int g2 = Mth.clamp((int) (((c >> 8) & 0xFF) * f), 0, 255);
+        int b = Mth.clamp((int) ((c & 0xFF) * f), 0, 255);
+        return 0xFF000000 | (r << 16) | (g2 << 8) | b;
+    }
+
+    private static int withAlpha(int c, int a) {
+        return (Mth.clamp(a, 0, 255) << 24) | (c & 0xFFFFFF);
     }
 }

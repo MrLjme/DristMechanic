@@ -1,5 +1,13 @@
 {
   "itemGroup.dristmechanic": "DristMechanic",
-  "item.dristmechanic.totebot_spawn_egg": "Яйцо призыва грузобота",
-  "entity.dristmechanic.totebot": "Грузобот"
+  "item.dristmechanic.totebot_spawn_egg": "Яйцо призыва Грузобота",
+  "item.dristmechanic.haybot_spawn_egg": "Яйцо призыва Сенобота",
+  "item.dristmechanic.farmbot_spawn_egg": "Яйцо призыва Фармбота",
+  "item.dristmechanic.tapebot_spawn_egg": "Яйцо призыва Лентобота",
+  "item.dristmechanic.red_tapebot_spawn_egg": "Яйцо призыва Красного Лентобота",
+  "entity.dristmechanic.totebot": "Грузобот",
+  "entity.dristmechanic.haybot": "Сенобот",
+  "entity.dristmechanic.farmbot": "Фармбот",
+  "entity.dristmechanic.tapebot": "Лентобот",
+  "entity.dristmechanic.red_tapebot": "Красный Лентобот"
 }

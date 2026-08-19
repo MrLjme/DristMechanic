@@ -1,6 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.handler.FarmManager;
+import com.dristmechanic.dristmechanic.handler.RaidManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
@@ -59,26 +60,30 @@ public class RemoveCropGoal extends Goal {
     private BlockPos findNearestCrop() {
         if (!(this.mob.level() instanceof ServerLevel serverLevel)) return null;
 
+        FarmManager.FarmData myFarm = RaidManager.getFarmForMob(serverLevel, this.mob.getUUID());
+        if (myFarm == null) {
+            return null;
+        }
+
         BlockPos nearest = null;
         double nearestDistSq = Double.MAX_VALUE;
         BlockPos mobPos = this.mob.blockPosition();
 
-        for (FarmManager.FarmData farm : FarmManager.getData(serverLevel).getAllFarms()) {
-            for (BlockPos crop : farm.getSpentCrops()) {
-                double distSq = mobPos.distSqr(crop);
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq;
-                    nearest = crop;
-                }
-            }
-            for (BlockPos crop : farm.getRawCrops()) {
-                double distSq = mobPos.distSqr(crop);
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq;
-                    nearest = crop;
-                }
+        for (BlockPos crop : myFarm.getSpentCrops()) {
+            double distSq = mobPos.distSqr(crop);
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearest = crop;
             }
         }
+        for (BlockPos crop : myFarm.getRawCrops()) {
+            double distSq = mobPos.distSqr(crop);
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearest = crop;
+            }
+        }
+
         return nearest;
     }
 

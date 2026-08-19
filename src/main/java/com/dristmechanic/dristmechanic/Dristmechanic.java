@@ -59,17 +59,21 @@ public class Dristmechanic {
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FLASH = PARTICLES.register("flash", () -> new SimpleParticleType(false));
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> SCRAP = PARTICLES.register("scrap", () -> new SimpleParticleType(false));
 
+    // Spawn Eggs
     public static final DeferredItem<SpawnEggItem> TOTEBOT_SPAWN_EGG = ITEMS.registerItem("totebot_spawn_egg",
-            properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x4A4A4A, 0xFF6600, properties));
+            properties -> new SpawnEggItem(ModEntities.TOTEBOT.get(), 0x648e3d, 0xa5c5e5, properties));
 
-    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> DRIST_TAB = CREATIVE_MODE_TABS.register("drist_tab", () -> CreativeModeTab.builder()
-            .title(Component.translatable("itemGroup.dristmechanic"))
-            .withTabsBefore(CreativeModeTabs.COMBAT)
-            .icon(() -> TOTEBOT_SPAWN_EGG.get().getDefaultInstance())
-            .displayItems((parameters, output) -> {
-                output.accept(TOTEBOT_SPAWN_EGG.get());
-            })
-            .build());
+    public static final DeferredItem<SpawnEggItem> HAYBOT_SPAWN_EGG = ITEMS.registerItem("haybot_spawn_egg",
+            properties -> new SpawnEggItem(ModEntities.HAYBOT.get(), 0xdb6241, 0xf3b93f, properties));
+
+    public static final DeferredItem<SpawnEggItem> FARMBOT_SPAWN_EGG = ITEMS.registerItem("farmbot_spawn_egg",
+            properties -> new SpawnEggItem(ModEntities.FARMBOT.get(), 0xec5234, 0xffffff, properties));
+
+    public static final DeferredItem<SpawnEggItem> TAPEBOT_SPAWN_EGG = ITEMS.registerItem("tapebot_spawn_egg",
+            properties -> new SpawnEggItem(ModEntities.TAPEBOT.get(), 0x2859c9, 0xcda03a, properties));
+
+    public static final DeferredItem<SpawnEggItem> RED_TAPEBOT_SPAWN_EGG = ITEMS.registerItem("red_tapebot_spawn_egg",
+            properties -> new SpawnEggItem(ModEntities.RED_TAPEBOT.get(), 0xc63530, 0xcda03a, properties));
 
     public Dristmechanic(IEventBus modEventBus, ModContainer modContainer) {
         ModAttachments.ATTACHMENT_TYPES.register(modEventBus);
@@ -94,6 +98,10 @@ public class Dristmechanic {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(TOTEBOT_SPAWN_EGG);
+            event.accept(HAYBOT_SPAWN_EGG);
+            event.accept(FARMBOT_SPAWN_EGG);
+            event.accept(TAPEBOT_SPAWN_EGG);
+            event.accept(RED_TAPEBOT_SPAWN_EGG);
         }
     }
 

@@ -12,9 +12,9 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -220,6 +220,7 @@ public class FarmManager {
         private int currentRaidValue = 0;
         private int totalRaidValue = 0;
         private int originalFarmValue = 0;
+        private long raidStartTime = -1;
 
         public FarmData(ChunkPos mainChunk) {
             this.mainChunk = mainChunk;
@@ -305,6 +306,7 @@ public class FarmManager {
             tag.putInt("currentRaidValue", currentRaidValue);
             tag.putInt("totalRaidValue", totalRaidValue);
             tag.putInt("originalFarmValue", originalFarmValue);
+            tag.putLong("raidStartTime", raidStartTime);
 
             return tag;
         }
@@ -363,6 +365,7 @@ public class FarmManager {
             farm.currentRaidValue = tag.getInt("currentRaidValue");
             farm.totalRaidValue = tag.getInt("totalRaidValue");
             farm.originalFarmValue = tag.getInt("originalFarmValue");
+            farm.raidStartTime = tag.getLong("raidStartTime");
 
             return farm;
         }
@@ -409,7 +412,30 @@ public class FarmManager {
                 if (level.getGameTime() % 20 == 0) {
                     int guiValue = getGuiValue(level);
                     RaidManager.syncFarmData(level, this, guiValue);
+                    if (hologramUUID != null) {
+                        updateHologram(level);
+                    }
                 }
+
+                if (raidStartTime > 0 && level.getGameTime() - raidStartTime >= 10 * 60 * 20L) {
+                    LOGGER.info("[FARM_TICK] 10 minutes passed, failing raid for farm {}", mainChunk);
+                    raidActive = false;
+                    mobsSpawned = false;
+
+                    for (UUID mobUUID : new HashSet<>(spawnedMobs)) {
+                        Entity mob = level.getEntity(mobUUID);
+                        if (mob != null) mob.discard();
+                    }
+                    spawnedMobs.clear();
+
+                    raidCountdownEndTick = level.getGameTime() + Config.RAID_COUNTDOWN_TICKS.get();
+                    lockAllChunks(level, level.getGameTime() + Config.RAID_COUNTDOWN_TICKS.get() + 24000L);
+
+                    RaidManager.onRaidScheduled(level, this, accumulatedValue);
+                    FarmManager.getData(level).setDirty();
+                    return;
+                }
+
                 if (mobsSpawned && spawnedMobs.isEmpty()) {
                     LOGGER.info("[FARM_TICK] All mobs dead, ending raid for farm {}", mainChunk);
                     raidActive = false;
@@ -418,6 +444,7 @@ public class FarmManager {
                     rawCrops.clear();
                     spentCrops.clear();
                     unlockAllChunks(level);
+                    removeHologram(level);
                     RaidManager.onRaidComplete(level, this);
                     FarmManager.getData(level).setDirty();
                 }
@@ -427,6 +454,9 @@ public class FarmManager {
             if (level.getGameTime() % 20 == 0) {
                 int guiValue = getGuiValue(level);
                 RaidManager.syncFarmData(level, this, guiValue);
+                if (raidCountdownEndTick > 0 && hologramUUID != null) {
+                    updateHologram(level);
+                }
             }
 
             if (raidCountdownEndTick > 0) {
@@ -434,9 +464,6 @@ public class FarmManager {
                 if (remaining <= 0) {
                     startRaid(level);
                     return;
-                }
-                if (level.getGameTime() % 20 == 0) {
-                    updateHologram(level);
                 }
                 return;
             }
@@ -508,34 +535,75 @@ public class FarmManager {
 
         private void spawnHologram(ServerLevel level) {
             if (farmCenter == null) return;
-            ArmorStand stand = EntityType.ARMOR_STAND.create(level);
-            if (stand != null) {
-                stand.setPos(farmCenter.x, farmCenter.y - 1.0, farmCenter.z);
-                stand.setInvisible(true);
-                stand.setNoGravity(true);
-                stand.setInvulnerable(true);
-                stand.setCustomNameVisible(true);
-                stand.setNoBasePlate(true);
-                long seconds = getRaidCountdown(level) / 20;
-                long minutes = seconds / 60;
-                long secs = seconds % 60;
-                String timeStr = String.format("%02d:%02d", minutes, secs);
-                stand.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
-                level.addFreshEntity(stand);
-                hologramUUID = stand.getUUID();
-                LOGGER.info("[HOLOGRAM] Spawned at {}", farmCenter);
+            Display.TextDisplay td = EntityType.TEXT_DISPLAY.create(level);
+            if (td != null) {
+                td.setPos(farmCenter.x, farmCenter.y + 1.0, farmCenter.z);
+                td.setNoGravity(true);
+                td.setInvulnerable(true);
+
+                Component comp;
+                if (raidActive) {
+                    long elapsed = level.getGameTime() - raidStartTime;
+                    long remainingTicks = Math.max(0, (10 * 60 * 20L) - elapsed);
+                    long seconds = remainingTicks / 20;
+                    long minutes = seconds / 60;
+                    long secs = seconds % 60;
+                    String timeStr = String.format("%02d:%02d", minutes, secs);
+                    comp = Component.literal(timeStr).withStyle(ChatFormatting.BLACK);
+                } else {
+                    long seconds = getRaidCountdown(level) / 20;
+                    long minutes = seconds / 60;
+                    long secs = seconds % 60;
+                    String timeStr = String.format("%02d:%02d", minutes, secs);
+                    comp = Component.literal(timeStr).withStyle(ChatFormatting.RED);
+                }
+
+                CompoundTag nbt = new CompoundTag();
+                td.saveWithoutId(nbt);
+                nbt.putString("text", Component.Serializer.toJson(comp, level.registryAccess()));
+                nbt.putString("billboard", "center");
+                nbt.putBoolean("see_through", true);
+                nbt.putInt("background", 0);
+
+                ListTag tags = new ListTag();
+                tags.add(StringTag.valueOf("my_holo"));
+                nbt.put("Tags", tags);
+
+                td.load(nbt);
+
+                level.addFreshEntity(td);
+                hologramUUID = td.getUUID();
+                LOGGER.info("[HOLOGRAM] Spawned TextDisplay at {}", farmCenter);
             }
         }
 
         private void updateHologram(ServerLevel level) {
             if (hologramUUID == null) return;
             Entity entity = level.getEntity(hologramUUID);
-            if (entity instanceof ArmorStand stand && stand.isAlive()) {
-                long seconds = getRaidCountdown(level) / 20;
-                long minutes = seconds / 60;
-                long secs = seconds % 60;
-                String timeStr = String.format("%02d:%02d", minutes, secs);
-                stand.setCustomName(Component.literal(timeStr).withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+            if (entity instanceof Display.TextDisplay td && td.isAlive()) {
+                Component comp;
+                if (raidActive) {
+                    long elapsed = level.getGameTime() - raidStartTime;
+                    long remainingTicks = Math.max(0, (10 * 60 * 20L) - elapsed);
+                    long seconds = remainingTicks / 20;
+                    long minutes = seconds / 60;
+                    long secs = seconds % 60;
+                    String timeStr = String.format("%02d:%02d", minutes, secs);
+                    comp = Component.literal(timeStr).withStyle(ChatFormatting.BLACK);
+                } else if (raidCountdownEndTick > 0) {
+                    long seconds = getRaidCountdown(level) / 20;
+                    long minutes = seconds / 60;
+                    long secs = seconds % 60;
+                    String timeStr = String.format("%02d:%02d", minutes, secs);
+                    comp = Component.literal(timeStr).withStyle(ChatFormatting.RED);
+                } else {
+                    return;
+                }
+
+                CompoundTag nbt = new CompoundTag();
+                td.saveWithoutId(nbt);
+                nbt.putString("text", Component.Serializer.toJson(comp, level.registryAccess()));
+                td.load(nbt);
             }
         }
 
@@ -555,7 +623,7 @@ public class FarmManager {
         private void startRaid(ServerLevel level) {
             raidActive = true;
             mobsSpawned = false;
-            removeHologram(level);
+            raidStartTime = level.getGameTime();
             LOGGER.info("[RAID_START] Starting raid for farm {} with value: {}", mainChunk, accumulatedValue);
             RaidManager.executeRaid(level, this, accumulatedValue, farmCenter);
             FarmManager.getData(level).setDirty();

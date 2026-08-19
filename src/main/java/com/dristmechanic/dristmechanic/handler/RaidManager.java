@@ -512,4 +512,9 @@ public class RaidManager {
         long nextSpawnTime;
         ChunkPos farmMainChunk;
     }
+    public static FarmManager.FarmData getFarmForMob(ServerLevel level, UUID mobUUID) {
+        FarmOwner owner = mobToFarmMap.get(mobUUID);
+        if (owner == null) return null;
+        return FarmManager.getData(level).getFarmByMainChunk(owner.farmMainChunk());
+    }
 }

@@ -111,6 +111,7 @@ public class Config {
                     "6:31:100:dristmechanic:totebot:3,dristmechanic:tapebot:3,dristmechanic:tapebot:2",
                     "6:56:80:dristmechanic:totebot:3,dristmechanic:tapebot:2",
                     "6:75:60:dristmechanic:farmbot:1",
+                    "6:75:60:dristmechanic:red_tapebot:1",
                     "7:7:1:dristmechanic:totebot:1,dristmechanic:haybot:1",
                     "7:14:10:dristmechanic:totebot:2,dristmechanic:haybot:2",
                     "7:21:100:dristmechanic:totebot:3,dristmechanic:haybot:3",
@@ -119,7 +120,8 @@ public class Config {
                     "7:36:100:dristmechanic:totebot:3,dristmechanic:totebot:2",
                     "7:31:100:dristmechanic:totebot:3,dristmechanic:tapebot:3,dristmechanic:tapebot:2",
                     "7:56:80:dristmechanic:totebot:3,dristmechanic:tapebot:2",
-                    "7:75:60:dristmechanic:farmbot:1"
+                    "7:75:60:dristmechanic:farmbot:1",
+                    "7:75:60:dristmechanic:red_tapebot:1"
             ), obj -> obj instanceof String);
 
     static final ModConfigSpec SPEC = BUILDER.build();
