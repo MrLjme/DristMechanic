@@ -408,6 +408,11 @@ public class FarmManager {
         }
 
         public void tick(ServerLevel level) {
+
+            if (!level.isLoaded(mainChunk.getWorldPosition())) {
+                return;
+            }
+
             if (raidActive) {
                 if (level.getGameTime() % 20 == 0) {
                     int guiValue = getGuiValue(level);

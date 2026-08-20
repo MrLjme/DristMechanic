@@ -1,13 +1,32 @@
 {
   "itemGroup.dristmechanic": "DristMechanic",
-  "item.dristmechanic.totebot_spawn_egg": "Яйцо призыва Грузобота",
-  "item.dristmechanic.haybot_spawn_egg": "Яйцо призыва Сенобота",
-  "item.dristmechanic.farmbot_spawn_egg": "Яйцо призыва Фармбота",
-  "item.dristmechanic.tapebot_spawn_egg": "Яйцо призыва Лентобота",
-  "item.dristmechanic.red_tapebot_spawn_egg": "Яйцо призыва Красного Лентобота",
+
   "entity.dristmechanic.totebot": "Грузобот",
+  "entity.dristmechanic.farmbot": "Фермобот",
   "entity.dristmechanic.haybot": "Сенобот",
-  "entity.dristmechanic.farmbot": "Фармбот",
-  "entity.dristmechanic.tapebot": "Лентобот",
-  "entity.dristmechanic.red_tapebot": "Красный Лентобот"
+  "entity.dristmechanic.tapebot": "Скотчбот",
+  "entity.dristmechanic.red_tapebot": "Красный скотчбот",
+  "entity.dristmechanic.tape": "Скотч",
+  "entity.dristmechanic.red_tape": "Красный скотч",
+
+  "item.dristmechanic.totebot_spawn_egg": "Яйцо призыва грузобота",
+  "item.dristmechanic.farmbot_spawn_egg": "Яйцо призыва фермобота",
+  "item.dristmechanic.haybot_spawn_egg": "Яйцо призыва сенобота",
+  "item.dristmechanic.tapebot_spawn_egg": "Яйцо призыва скотчбота",
+  "item.dristmechanic.red_tapebot_spawn_egg": "Яйцо призыва красного скотчбота",
+
+  "subtitles.dristmechanic.farmbot_ambient": "Фермобот гудит",
+  "subtitles.dristmechanic.farmbot_hurt": "Фермобот ранен",
+  "subtitles.dristmechanic.farmbot_death": "Фермобот погибает",
+  "subtitles.dristmechanic.haybot_ambient": "Сенобот шуршит",
+  "subtitles.dristmechanic.haybot_hurt": "Сенобот ранен",
+  "subtitles.dristmechanic.haybot_death": "Сенобот погибает",
+  "subtitles.dristmechanic.tapebot_ambient": "Скотчбот щёлкает",
+  "subtitles.dristmechanic.tapebot_hurt": "Скотчбот ранен",
+  "subtitles.dristmechanic.tapebot_death": "Скотчбот погибает",
+  "subtitles.dristmechanic.tapebot_shoot": "Скотчбот стреляет",
+  "subtitles.dristmechanic.totebot_ambient": "Грузобот скрипит",
+  "subtitles.dristmechanic.totebot_hurt": "Грузобот ранен",
+  "subtitles.dristmechanic.totebot_death": "Грузобот погибает",
+  "subtitles.dristmechanic.tape_hit": "Скотч попадает"
 }

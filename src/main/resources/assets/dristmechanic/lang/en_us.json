@@ -1,13 +1,32 @@
 {
   "itemGroup.dristmechanic": "DristMechanic",
+
+  "entity.dristmechanic.totebot": "Totebot",
+  "entity.dristmechanic.farmbot": "Farmbot",
+  "entity.dristmechanic.haybot": "Haybot",
+  "entity.dristmechanic.tapebot": "Tapebot",
+  "entity.dristmechanic.red_tapebot": "Red Tapebot",
+  "entity.dristmechanic.tape": "Tape",
+  "entity.dristmechanic.red_tape": "Red Tape",
+
   "item.dristmechanic.totebot_spawn_egg": "Totebot Spawn Egg",
-  "item.dristmechanic.haybot_spawn_egg": "Haybot Spawn Egg",
   "item.dristmechanic.farmbot_spawn_egg": "Farmbot Spawn Egg",
+  "item.dristmechanic.haybot_spawn_egg": "Haybot Spawn Egg",
   "item.dristmechanic.tapebot_spawn_egg": "Tapebot Spawn Egg",
   "item.dristmechanic.red_tapebot_spawn_egg": "Red Tapebot Spawn Egg",
-  "entity.dristmechanic.totebot": "Totebot",
-  "entity.dristmechanic.haybot": "Haybot",
-  "entity.dristmechanic.farmbot": "Farmbot",
-  "entity.dristmechanic.tapebot": "Tapebot",
-  "entity.dristmechanic.red_tapebot": "Red Tapebot"
+
+  "subtitles.dristmechanic.farmbot_ambient": "Farmbot hums",
+  "subtitles.dristmechanic.farmbot_hurt": "Farmbot hurts",
+  "subtitles.dristmechanic.farmbot_death": "Farmbot dies",
+  "subtitles.dristmechanic.haybot_ambient": "Haybot rustles",
+  "subtitles.dristmechanic.haybot_hurt": "Haybot hurts",
+  "subtitles.dristmechanic.haybot_death": "Haybot dies",
+  "subtitles.dristmechanic.tapebot_ambient": "Tapebot clicks",
+  "subtitles.dristmechanic.tapebot_hurt": "Tapebot hurts",
+  "subtitles.dristmechanic.tapebot_death": "Tapebot dies",
+  "subtitles.dristmechanic.tapebot_shoot": "Tapebot shoots",
+  "subtitles.dristmechanic.totebot_ambient": "Totebot creaks",
+  "subtitles.dristmechanic.totebot_hurt": "Totebot hurts",
+  "subtitles.dristmechanic.totebot_death": "Totebot dies",
+  "subtitles.dristmechanic.tape_hit": "Tape hits"
 }

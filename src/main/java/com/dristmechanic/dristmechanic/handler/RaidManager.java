@@ -306,6 +306,9 @@ public class RaidManager {
         long currentTime = level.getGameTime();
         while (it.hasNext()) {
             RaidSpawnTask task = it.next();
+            if (!level.isLoaded(task.farmMainChunk.getWorldPosition())) {
+                continue;
+            }
             if (currentTime >= task.nextSpawnTime) {
                 if (task.spawnIndex < task.spawnGroups.size()) {
                     FarmManager.FarmData farm = FarmManager.getData(level)

@@ -1,6 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
+import com.dristmechanic.dristmechanic.init.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -29,6 +30,8 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.EnumSet;
 
 public class HaybotEntity extends Monster implements AnimatedAttacker {
@@ -95,7 +98,7 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 25.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.4D)
-                .add(Attributes.ATTACK_DAMAGE, 5.0D)
+                .add(Attributes.ATTACK_DAMAGE, 6.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.7D)
                 .add(Attributes.FOLLOW_RANGE, 16.0D);
@@ -230,14 +233,20 @@ public class HaybotEntity extends Monster implements AnimatedAttacker {
     }
 
     @Override
-    protected SoundEvent getHurtSound(DamageSource damageSource) {
-        return SoundEvents.ANVIL_PLACE;
+    protected @Nullable SoundEvent getAmbientSound() {
+        return ModSounds.HAYBOT_AMBIENT.get();
     }
 
     @Override
-    protected SoundEvent getDeathSound() {
-        return SoundEvents.ANVIL_PLACE;
+    protected @Nullable SoundEvent getHurtSound(@NotNull DamageSource damageSource) {
+        return ModSounds.HAYBOT_HURT.get();
     }
+
+    @Override
+    protected @Nullable SoundEvent getDeathSound() {
+        return ModSounds.HAYBOT_DEATH.get();
+    }
+
     public static class MoveToRaidCenterGoal extends Goal {
         private final HaybotEntity mob;
         private final double speedModifier;

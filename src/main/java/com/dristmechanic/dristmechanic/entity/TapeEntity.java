@@ -1,10 +1,9 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.init.ModEntities;
+import com.dristmechanic.dristmechanic.init.ModSounds;
 import com.dristmechanic.dristmechanic.procedures.ImpactProcedure;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
@@ -18,6 +17,7 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -82,8 +82,22 @@ public class TapeEntity extends AbstractArrow implements ItemSupplier {
     }
 
     @Override
+    public void onHitEntity(EntityHitResult entityHitResult) {
+        super.onHitEntity(entityHitResult);
+        if (!this.level().isClientSide()) {
+            this.level().playSound(null, entityHitResult.getEntity().getX(), entityHitResult.getEntity().getY(), entityHitResult.getEntity().getZ(),
+                    ModSounds.TAPE_HIT.get(), SoundSource.HOSTILE, 1.0F, 1.0F);
+        }
+        ImpactProcedure.execute(this.level(), entityHitResult.getEntity().getBlockX(), entityHitResult.getEntity().getBlockY(), entityHitResult.getEntity().getBlockZ());
+    }
+
+    @Override
     public void onHitBlock(BlockHitResult blockHitResult) {
         super.onHitBlock(blockHitResult);
+        if (!this.level().isClientSide()) {
+            this.level().playSound(null, blockHitResult.getBlockPos().getX(), blockHitResult.getBlockPos().getY(), blockHitResult.getBlockPos().getZ(),
+                    ModSounds.TAPE_HIT.get(), SoundSource.HOSTILE, 1.0F, 1.0F);
+        }
         ImpactProcedure.execute(this.level(), blockHitResult.getBlockPos().getX(), blockHitResult.getBlockPos().getY(), blockHitResult.getBlockPos().getZ());
     }
 
@@ -103,7 +117,6 @@ public class TapeEntity extends AbstractArrow implements ItemSupplier {
         entityarrow.setBaseDamage(damage);
         entityarrow.setKnockback(knockback);
         world.addFreshEntity(entityarrow);
-        world.playSound(null, entity.getX(), entity.getY(), entity.getZ(), BuiltInRegistries.SOUND_EVENT.get(ResourceLocation.parse("entity.arrow.shoot")), SoundSource.PLAYERS, 1, 1f / (random.nextFloat() * 0.5f + 1) + (power / 2));
         return entityarrow;
     }
 
@@ -118,7 +131,6 @@ public class TapeEntity extends AbstractArrow implements ItemSupplier {
         entityarrow.setKnockback(1);
         entityarrow.setCritArrow(false);
         entity.level().addFreshEntity(entityarrow);
-        entity.level().playSound(null, entity.getX(), entity.getY(), entity.getZ(), BuiltInRegistries.SOUND_EVENT.get(ResourceLocation.parse("entity.arrow.shoot")), SoundSource.PLAYERS, 1, 1f / (RandomSource.create().nextFloat() * 0.5f + 1));
         return entityarrow;
     }
 }

@@ -21,6 +21,7 @@ import com.dristmechanic.dristmechanic.entity.TapebotEntity;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
 import com.dristmechanic.dristmechanic.init.ModAttachments;
 import com.dristmechanic.dristmechanic.init.ModEntities;
+import com.dristmechanic.dristmechanic.init.ModSounds;
 import com.dristmechanic.dristmechanic.network.ModNetworking;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.particles.ParticleType;
@@ -81,7 +82,7 @@ public class Dristmechanic {
         CREATIVE_MODE_TABS.register(modEventBus);
         PARTICLES.register(modEventBus);
         ModEntities.ENTITIES.register(modEventBus);
-
+        ModSounds.SOUND_EVENTS.register(modEventBus);
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
             event.put(ModEntities.TOTEBOT.get(), TotebotEntity.createAttributes().build());
             event.put(ModEntities.FARMBOT.get(), FarmbotEntity.createAttributes().build());

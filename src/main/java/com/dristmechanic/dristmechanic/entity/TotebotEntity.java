@@ -1,6 +1,7 @@
 package com.dristmechanic.dristmechanic.entity;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
+import com.dristmechanic.dristmechanic.init.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
@@ -33,6 +34,7 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.*;
@@ -277,13 +279,18 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     }
 
     @Override
-    protected SoundEvent getHurtSound(DamageSource damageSource) {
-        return SoundEvents.ANVIL_PLACE;
+    protected @Nullable SoundEvent getAmbientSound() {
+        return ModSounds.TOTEBOT_AMBIENT.get();
     }
 
     @Override
-    protected SoundEvent getDeathSound() {
-        return SoundEvents.ANVIL_PLACE;
+    protected @Nullable SoundEvent getHurtSound(@NotNull DamageSource damageSource) {
+        return ModSounds.TOTEBOT_HURT.get();
+    }
+
+    @Override
+    protected @Nullable SoundEvent getDeathSound() {
+        return ModSounds.TOTEBOT_DEATH.get();
     }
 
     public static class MoveToRaidCenterGoal extends Goal {

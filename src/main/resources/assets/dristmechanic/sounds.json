@@ -1,0 +1,58 @@
+{
+  "farmbot_ambient": {
+    "subtitle": "subtitles.dristmechanic.farmbot_ambient",
+    "sounds": ["dristmechanic:farmbot_ambient"]
+  },
+  "farmbot_hurt": {
+    "subtitle": "subtitles.dristmechanic.farmbot_hurt",
+    "sounds": ["dristmechanic:farmbot_hurt"]
+  },
+  "farmbot_death": {
+    "subtitle": "subtitles.dristmechanic.farmbot_death",
+    "sounds": ["dristmechanic:farmbot_death"]
+  },
+  "haybot_ambient": {
+    "subtitle": "subtitles.dristmechanic.haybot_ambient",
+    "sounds": ["dristmechanic:haybot_ambient"]
+  },
+  "haybot_hurt": {
+    "subtitle": "subtitles.dristmechanic.haybot_hurt",
+    "sounds": ["dristmechanic:haybot_hurt"]
+  },
+  "haybot_death": {
+    "subtitle": "subtitles.dristmechanic.haybot_death",
+    "sounds": ["dristmechanic:haybot_death"]
+  },
+  "tapebot_ambient": {
+    "subtitle": "subtitles.dristmechanic.tapebot_ambient",
+    "sounds": ["dristmechanic:tapebot_ambient"]
+  },
+  "tapebot_hurt": {
+    "subtitle": "subtitles.dristmechanic.tapebot_hurt",
+    "sounds": ["dristmechanic:tapebot_hurt"]
+  },
+  "tapebot_death": {
+    "subtitle": "subtitles.dristmechanic.tapebot_death",
+    "sounds": ["dristmechanic:tapebot_death"]
+  },
+  "tapebot_shoot": {
+    "subtitle": "subtitles.dristmechanic.tapebot_shoot",
+    "sounds": ["dristmechanic:tapebot_shoot"]
+  },
+  "totebot_ambient": {
+    "subtitle": "subtitles.dristmechanic.totebot_ambient",
+    "sounds": ["dristmechanic:totebot_ambient"]
+  },
+  "totebot_hurt": {
+    "subtitle": "subtitles.dristmechanic.totebot_hurt",
+    "sounds": ["dristmechanic:totebot_hurt"]
+  },
+  "totebot_death": {
+    "subtitle": "subtitles.dristmechanic.totebot_death",
+    "sounds": ["dristmechanic:totebot_death"]
+  },
+  "tape_hit": {
+    "subtitle": "subtitles.dristmechanic.tape_hit",
+    "sounds": ["dristmechanic:tape_hit"]
+  }
+}
