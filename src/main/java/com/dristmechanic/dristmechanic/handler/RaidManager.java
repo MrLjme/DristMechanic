@@ -30,7 +30,6 @@ import static software.bernie.geckolib.GeckoLibConstants.LOGGER;
 @EventBusSubscriber(modid = Dristmechanic.MODID)
 public class RaidManager {
 
-    // Only mob tracking remains global (maps mob UUID to farm owner)
     private static final Map<UUID, FarmOwner> mobToFarmMap = new ConcurrentHashMap<>();
     private static final Map<ServerLevel, List<RaidSpawnTask>> activeSpawnTasks = new ConcurrentHashMap<>();
 
@@ -149,58 +148,30 @@ public class RaidManager {
             return;
         }
 
-        Map<String, Integer> enemyCounts = new LinkedHashMap<>();
+        List<String> allMobIds = new ArrayList<>();
         for (Enemy e : allGeneratedEnemies) {
-            enemyCounts.merge(e.entityId, e.qty, Integer::sum);
-        }
-
-        int totalMobs = enemyCounts.values().stream().mapToInt(Integer::intValue).sum();
-        int mobsPerWave = Math.max(1, totalMobs / 3);
-
-        List<SpawnGroup> waves = new ArrayList<>();
-        List<Enemy> currentWave = new ArrayList<>();
-        int currentWaveSize = 0;
-
-        for (Map.Entry<String, Integer> entry : enemyCounts.entrySet()) {
-            String entityId = entry.getKey();
-            int remaining = entry.getValue();
-            while (remaining > 0) {
-                int space = mobsPerWave - currentWaveSize;
-                int toAdd = Math.min(remaining, space);
-                if (toAdd > 0) {
-                    Enemy existing = currentWave.stream()
-                            .filter(e -> e.entityId.equals(entityId))
-                            .findFirst().orElse(null);
-                    if (existing != null) {
-                        existing.qty += toAdd;
-                    } else {
-                        currentWave.add(new Enemy(entityId, toAdd));
-                    }
-                    currentWaveSize += toAdd;
-                    remaining -= toAdd;
-                }
-                if (currentWaveSize >= mobsPerWave) {
-                    waves.add(new SpawnGroup(new ArrayList<>(currentWave), 0, 0));
-                    currentWave.clear();
-                    currentWaveSize = 0;
-                }
+            for (int i = 0; i < e.qty; i++) {
+                allMobIds.add(e.entityId);
             }
         }
-        if (!currentWave.isEmpty()) {
-            waves.add(new SpawnGroup(currentWave, 0, 0));
+        Collections.shuffle(allMobIds);
+
+        int totalMobs = allMobIds.size();
+        if (totalMobs == 0) {
+            LOGGER.warn("[EXECUTE_RAID] No enemies generated, aborting");
+            return;
         }
 
         int totalRaidValue = 0;
-        for (SpawnGroup wave : waves) {
-            for (Enemy enemy : wave.enemies) {
-                totalRaidValue += calculateMobValue(enemy) * enemy.qty;
-            }
+        for (String entityId : allMobIds) {
+            Enemy tempEnemy = new Enemy(entityId, 1);
+            totalRaidValue += calculateMobValue(tempEnemy);
         }
 
         farm.setCurrentRaidValue(totalRaidValue);
         farm.setTotalRaidValue(totalRaidValue);
 
-        LOGGER.info("[EXECUTE_RAID] Total raid value: {}, waves: {}", totalRaidValue, waves.size());
+        LOGGER.info("[EXECUTE_RAID] Total raid value: {}, total mobs: {}", totalRaidValue, totalMobs);
 
         int desiredSpawnPoints = Math.max(15, Math.min(60, totalMobs / 3));
         List<BlockPos> spawnPoints = findRaidSpawnPoints(level, center, desiredSpawnPoints);
@@ -208,14 +179,18 @@ public class RaidManager {
             spawnPoints = findRaidSpawnPointsClose(level, center, desiredSpawnPoints);
         }
 
+        int batchSize = Math.min(100, allMobIds.size());
+        List<String> firstBatch = new ArrayList<>(allMobIds.subList(0, batchSize));
+        allMobIds.subList(0, batchSize).clear();
+
         RaidSpawnTask task = new RaidSpawnTask();
-        task.spawnGroups = waves;
+        task.remainingMobs = allMobIds;
         task.spawnPoints = spawnPoints;
         task.center = center;
-        task.spawnIndex = 0;
-        task.nextSpawnTime = level.getGameTime();
         task.farmMainChunk = farm.getMainChunk();
         activeSpawnTasks.computeIfAbsent(level, k -> new ArrayList<>()).add(task);
+
+        spawnBatch(level, firstBatch, spawnPoints, center, farm);
 
         int originalValue = farm.getOriginalFarmValue();
         double scaleFactor = originalValue > 0 && totalRaidValue > 0
@@ -303,69 +278,62 @@ public class RaidManager {
         if (tasks == null || tasks.isEmpty()) return;
 
         Iterator<RaidSpawnTask> it = tasks.iterator();
-        long currentTime = level.getGameTime();
         while (it.hasNext()) {
             RaidSpawnTask task = it.next();
             if (!level.isLoaded(task.farmMainChunk.getWorldPosition())) {
                 continue;
             }
-            if (currentTime >= task.nextSpawnTime) {
-                if (task.spawnIndex < task.spawnGroups.size()) {
-                    FarmManager.FarmData farm = FarmManager.getData(level)
-                            .getFarmByMainChunk(task.farmMainChunk);
-                    if (farm != null) {
-                        SpawnGroup group = task.spawnGroups.get(task.spawnIndex);
-                        spawnGroup(level, group, task.spawnPoints, task.center, farm);
-                    }
-                    task.spawnIndex++;
-                    task.nextSpawnTime = currentTime + Config.SPAWN_INTERVAL_TICKS.get();
-                } else {
-                    it.remove();
-                }
+
+            FarmManager.FarmData farm = FarmManager.getData(level).getFarmByMainChunk(task.farmMainChunk);
+            if (farm == null || !farm.isRaidActive()) {
+                it.remove();
+                continue;
+            }
+
+            int aliveMobs = farm.getSpawnedMobCount();
+
+            if (aliveMobs <= 50 && !task.remainingMobs.isEmpty()) {
+                int batchSize = Math.min(100, task.remainingMobs.size());
+                List<String> nextBatch = new ArrayList<>(task.remainingMobs.subList(0, batchSize));
+                task.remainingMobs.subList(0, batchSize).clear();
+
+                spawnBatch(level, nextBatch, task.spawnPoints, task.center, farm);
+            }
+
+            if (task.remainingMobs.isEmpty() && aliveMobs == 0) {
+                it.remove();
             }
         }
     }
 
-    private static void spawnGroup(ServerLevel level, SpawnGroup group,
-                                   List<BlockPos> spawnPoints, Vec3 center,
-                                   FarmManager.FarmData farm) {
-        if (spawnPoints.isEmpty()) return;
+    private static void spawnBatch(ServerLevel level, List<String> mobIds, List<BlockPos> spawnPoints, Vec3 center, FarmManager.FarmData farm) {
+        if (spawnPoints.isEmpty() || mobIds.isEmpty()) return;
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         BlockPos centerPos = new BlockPos((int)center.x, (int)center.y, (int)center.z);
 
-        for (Enemy enemy : group.enemies) {
-            ResourceLocation location = ResourceLocation.tryParse(enemy.entityId);
+        for (String entityId : mobIds) {
+            ResourceLocation location = ResourceLocation.tryParse(entityId);
             if (location == null) continue;
             EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(location).orElse(null);
             if (entityType == null) continue;
 
-            for (int i = 0; i < enemy.qty; i++) {
-                BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
-                Mob mob = (Mob) entityType.create(level);
-                if (mob == null) continue;
+            BlockPos pos = spawnPoints.get(rnd.nextInt(spawnPoints.size()));
+            Mob mob = (Mob) entityType.create(level);
+            if (mob == null) continue;
 
-                mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
-                mob.setPersistenceRequired();
-                UUID mobUUID = mob.getUUID();
-                farm.addSpawnedMob(mobUUID);
-                mobToFarmMap.put(mobUUID, new FarmOwner(level, farm.getMainChunk()));
+            mob.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, rnd.nextFloat() * 360F, 0);
+            mob.setPersistenceRequired();
+            UUID mobUUID = mob.getUUID();
+            farm.addSpawnedMob(mobUUID);
+            mobToFarmMap.put(mobUUID, new FarmOwner(level, farm.getMainChunk()));
 
-                if (mob instanceof TotebotEntity totebot) totebot.setRaidTarget(centerPos);
-                else if (mob instanceof FarmbotEntity farmbot) farmbot.setRaidTarget(centerPos);
-                else if (mob instanceof HaybotEntity haybot) haybot.setRaidTarget(centerPos);
-                else if (mob instanceof TapebotEntity tapebot) tapebot.setRaidTarget(centerPos);
-                else if (mob instanceof RedTapebotEntity redTapebot) redTapebot.setRaidTarget(centerPos);
+            if (mob instanceof TotebotEntity totebot) totebot.setRaidTarget(centerPos);
+            else if (mob instanceof FarmbotEntity farmbot) farmbot.setRaidTarget(centerPos);
+            else if (mob instanceof HaybotEntity haybot) haybot.setRaidTarget(centerPos);
+            else if (mob instanceof TapebotEntity tapebot) tapebot.setRaidTarget(centerPos);
+            else if (mob instanceof RedTapebotEntity redTapebot) redTapebot.setRaidTarget(centerPos);
 
-                if (mob instanceof TotebotEntity totebot) totebot.setRaidTarget(centerPos);
-                else if (mob instanceof FarmbotEntity farmbot) farmbot.setRaidTarget(centerPos);
-                else if (mob instanceof HaybotEntity haybot) haybot.setRaidTarget(centerPos);
-                else if (mob instanceof TapebotEntity tapebot) tapebot.setRaidTarget(centerPos);
-                else if (mob instanceof RedTapebotEntity redTapebot) redTapebot.setRaidTarget(centerPos);
-
-                mob.addEffect(new MobEffectInstance(MobEffects.GLOWING, -1, 0, false, false));
-
-                level.addFreshEntity(mob);
-            }
+            level.addFreshEntity(mob);
         }
         FarmManager.getData(level).setDirty();
     }
@@ -505,16 +473,16 @@ public class RaidManager {
             this.qty = qty;
         }
     }
+
     private record SpawnGroup(List<Enemy> enemies, int cost, int weight) {}
 
     private static class RaidSpawnTask {
-        List<SpawnGroup> spawnGroups;
+        List<String> remainingMobs;
         List<BlockPos> spawnPoints;
         Vec3 center;
-        int spawnIndex;
-        long nextSpawnTime;
         ChunkPos farmMainChunk;
     }
+
     public static FarmManager.FarmData getFarmForMob(ServerLevel level, UUID mobUUID) {
         FarmOwner owner = mobToFarmMap.get(mobUUID);
         if (owner == null) return null;

@@ -119,7 +119,7 @@ public class RedTapeEntity extends AbstractArrow implements ItemSupplier {
 
     public static RedTapeEntity shoot(Level world, LivingEntity entity, RandomSource random, float power, double damage, int knockback) {
         RedTapeEntity entityarrow = new RedTapeEntity(ModEntities.RED_TAPE.get(), entity, world, null);
-        entityarrow.shoot(entity.getViewVector(1).x, entity.getViewVector(1).y, entity.getViewVector(1).z, power * 2, 0);
+        entityarrow.shoot(entity.getViewVector(1).x, entity.getViewVector(1).y, entity.getViewVector(1).z, power * 1, 0);
         entityarrow.setSilent(true);
         entityarrow.setCritArrow(false);
         entityarrow.setBaseDamage(damage);
@@ -135,7 +135,7 @@ public class RedTapeEntity extends AbstractArrow implements ItemSupplier {
         double dz = target.getZ() - entity.getZ();
         entityarrow.shoot(dx, dy - entityarrow.getY() + Math.hypot(dx, dz) * 0.2F, dz, 1f * 2, 12.0F);
         entityarrow.setSilent(true);
-        entityarrow.setBaseDamage(5);
+        entityarrow.setBaseDamage(3);
         entityarrow.setKnockback(1);
         entityarrow.setCritArrow(false);
         entity.level().addFreshEntity(entityarrow);

@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 public class HaybotRenderer extends MobRenderer<HaybotEntity, Modelhaybot<HaybotEntity>> {
 
     public HaybotRenderer(EntityRendererProvider.Context context) {
-        super(context, new Modelhaybot<>(context.bakeLayer(Modelhaybot.LAYER_LOCATION)), 0.45f);
+        super(context, new Modelhaybot<>(context.bakeLayer(Modelhaybot.LAYER_LOCATION)), 0.6f);
     }
 
     @Override

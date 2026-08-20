@@ -2,7 +2,6 @@ package com.dristmechanic.dristmechanic.client;
 
 import com.dristmechanic.dristmechanic.Dristmechanic;
 import com.dristmechanic.dristmechanic.entity.TotebotEntity;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
@@ -10,7 +9,7 @@ import software.bernie.geckolib.renderer.GeoEntityRenderer;
 public class TotebotRenderer extends GeoEntityRenderer<TotebotEntity> {
 
     public TotebotRenderer(net.minecraft.client.renderer.entity.EntityRendererProvider.Context renderManager) {
-        super(renderManager, new GeoModel<>() {
+        super(renderManager, new GeoModel<TotebotEntity>() {
             @Override
             public ResourceLocation getModelResource(TotebotEntity object) {
                 return ResourceLocation.fromNamespaceAndPath(Dristmechanic.MODID, "geo/totebot.geo.json");
@@ -26,6 +25,7 @@ public class TotebotRenderer extends GeoEntityRenderer<TotebotEntity> {
                 return ResourceLocation.fromNamespaceAndPath(Dristmechanic.MODID, "animations/totebot.animation.json");
             }
         });
+        this.shadowRadius = 0.7f;
     }
 
     @Override

@@ -4,15 +4,12 @@ import com.dristmechanic.dristmechanic.Dristmechanic;
 import com.dristmechanic.dristmechanic.init.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -31,7 +28,6 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -56,6 +52,8 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     private int attackTicks = 0;
 
     private BlockPos breakingBlock = null;
+
+    private float smoothedSpeed = 0.0F;
 
     @Override
     public int getStuckTicks() { return stuckTicks; }
@@ -160,7 +158,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     public boolean checkSpawnRules(LevelAccessor level, MobSpawnType spawnType) {
         BlockPos pos = this.blockPosition();
 
-        // Проверяем только базовые требования
         BlockPos below = pos.below();
         if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
             return false;
@@ -170,7 +167,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
             return false;
         }
 
-        // Для естественного спавна проверяем свет >= 9
         if (spawnType == MobSpawnType.NATURAL) {
             int lightLevel = level.getMaxLocalRawBrightness(pos);
             if (lightLevel < 9) {
@@ -183,20 +179,46 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<>(this, "main_controller", 2, event -> {
+        AnimationController<TotebotEntity> controller = new AnimationController<>(this, "main_controller", 2, event -> {
             if (this.isAttacking()) {
                 return event.setAndContinue(RawAnimation.begin().thenPlay("totebotattack"));
             }
-            boolean isMoving = event.isMoving() || this.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4D;
+
+            boolean isMoving = this.smoothedSpeed > 0.01D;
+
             if (isMoving) {
-                if (this.isAggressive()) {
+                if (this.isAggressive() || this.smoothedSpeed > 0.22D) {
                     return event.setAndContinue(RawAnimation.begin().thenLoop("totebotrun"));
                 } else {
                     return event.setAndContinue(RawAnimation.begin().thenLoop("totebotwalk"));
                 }
             }
             return event.setAndContinue(RawAnimation.begin().thenLoop("totebotidle"));
-        }));
+        });
+
+        controller.setAnimationSpeedHandler(entity -> {
+            if (entity.isAttacking()) {
+                return 1.0D;
+            }
+            double animSpeed = 0.75D + entity.smoothedSpeed * 4.0D;
+            return Math.min(Math.max(animSpeed, 0.75D), 2.0D);
+        });
+
+        controllers.add(controller);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        double speed = this.isAggressive() ? 0.35D : 0.25D;
+        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttribute != null) {
+            speedAttribute.setBaseValue(speed);
+        }
+
+        double currentSpeed = this.getDeltaMovement().horizontalDistance();
+        double lerpFactor = currentSpeed > this.smoothedSpeed ? 0.5D : 0.85D;
+        this.smoothedSpeed = (float) net.minecraft.util.Mth.lerp(lerpFactor, this.smoothedSpeed, currentSpeed);
     }
 
     @Override
@@ -205,18 +227,6 @@ public class TotebotEntity extends Monster implements GeoEntity, AnimatedAttacke
     public boolean isAttacking() { return this.entityData.get(ATTACKING); }
 
     public void setAttacking(boolean attacking) { this.entityData.set(ATTACKING, attacking); }
-
-    @Override
-    public void tick() {
-        super.tick();
-        double speed = this.isAggressive() ? 0.31 : 0.29;
-        var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttribute != null) {
-            speedAttribute.setBaseValue(speed);
-        }
-        float smoothFactor = 0.4F;
-        this.yBodyRot = net.minecraft.util.Mth.rotLerp(smoothFactor, this.yBodyRotO, this.yBodyRot);
-    }
 
     @Override
     public void setAttackingState(boolean attacking) { this.setAttacking(attacking); }

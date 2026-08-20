@@ -2,7 +2,7 @@
   "type": "minecraft:entity",
   "pools": [
     {
-      "rolls": 20,
+      "rolls": 15,
       "entries": [
         { "type": "minecraft:item", "name": "create:crushed_raw_copper", "weight": 8 },
         { "type": "minecraft:item", "name": "create:crushed_raw_gold", "weight": 4 },

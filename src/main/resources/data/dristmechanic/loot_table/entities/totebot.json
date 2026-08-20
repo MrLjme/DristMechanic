@@ -2,7 +2,7 @@
   "type": "minecraft:entity",
   "pools": [
     {
-      "rolls": 7,
+      "rolls": 5,
       "entries": [
         { "type": "minecraft:item", "name": "create:andesite_alloy", "weight": 4 },
         { "type": "minecraft:item", "name": "create:shaft", "weight": 6 },

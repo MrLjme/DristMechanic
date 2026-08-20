@@ -11,7 +11,7 @@ import net.minecraft.world.entity.Entity;
 public class FarmbotRenderer extends MobRenderer<FarmbotEntity, Modelfarmbot<FarmbotEntity>> {
 
     public FarmbotRenderer(EntityRendererProvider.Context context) {
-        super(context, new Modelfarmbot<>(context.bakeLayer(Modelfarmbot.LAYER_LOCATION)), 0.45f);
+        super(context, new Modelfarmbot<>(context.bakeLayer(Modelfarmbot.LAYER_LOCATION)), 1.9f);
     }
 
     @Override

@@ -12,9 +12,12 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -419,6 +422,15 @@ public class FarmManager {
                     RaidManager.syncFarmData(level, this, guiValue);
                     if (hologramUUID != null) {
                         updateHologram(level);
+                    }
+
+                    if (level.getGameTime() - raidStartTime >= 2400L) {
+                        for (UUID mobUUID : new HashSet<>(spawnedMobs)) {
+                            Entity entity = level.getEntity(mobUUID);
+                            if (entity instanceof Mob mob && !mob.hasEffect(MobEffects.GLOWING)) {
+                                mob.addEffect(new MobEffectInstance(MobEffects.GLOWING, 999999, 0, false, false));
+                            }
+                        }
                     }
                 }
 
