@@ -1,9 +1,12 @@
 package com.dristmechanic.dristmechanic.entity;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.level.pathfinder.Node;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.EnumSet;
@@ -232,7 +235,18 @@ public class SmartMeleeAttackGoal extends Goal {
             this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
             double distSqr = this.mob.distanceToSqr(target);
-            if (this.canShootChemicals && distSqr > 16.0D) {
+            boolean canReachTarget = false;
+            Path path = this.mob.getNavigation().getPath();
+            if (path != null && path.getNodeCount() > 0) {
+                Node endNode = path.getEndNode();
+                if (endNode != null) {
+                    if (endNode.asBlockPos().distSqr(target.blockPosition()) <= 4.0D) {
+                        canReachTarget = true;
+                    }
+                }
+            }
+
+            if (this.canShootChemicals && !canReachTarget) {
                 outOfRangeTicks++;
             } else if (this.canShootChemicals) {
                 outOfRangeTicks = 0;
@@ -240,7 +254,6 @@ public class SmartMeleeAttackGoal extends Goal {
 
             if (this.canShootChemicals && outOfRangeTicks > 40 && pesticideDelay < 0 && !isOnCooldown()) {
                 pesticideDelay = 60;
-                this.mob.getNavigation().stop();
             }
 
             if (this.canShootChemicals && pesticideDelay > 0) {
@@ -249,13 +262,30 @@ public class SmartMeleeAttackGoal extends Goal {
                     ChemicalProjectileEntity projectile = new ChemicalProjectileEntity(this.mob, this.mob.level());
                     projectile.setPos(this.mob.getX(), this.mob.getY() + 1.5D, this.mob.getZ());
 
-                    Vec3 toTarget = target.position().add(0, target.getBbHeight() / 2.0, 0).subtract(projectile.position());
-                    double horizontalDist = Math.sqrt(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
-                    double flightTime = Math.max(horizontalDist / 0.8D, 1.0D);
+                    double dx = target.getX() - this.mob.getX();
+                    double dy = target.getY() + target.getBbHeight() / 2.0 - (this.mob.getY() + 1.5D);
+                    double dz = target.getZ() - this.mob.getZ();
+                    double R = Math.sqrt(dx * dx + dz * dz);
 
-                    double vx = toTarget.x / flightTime;
-                    double vz = toTarget.z / flightTime;
-                    double vy = (toTarget.y / flightTime) + (0.05D * flightTime);
+                    double gravity = 0.04D;
+                    double angle = Math.PI / 3.0;
+                    double tanAngle = Math.tan(angle);
+                    double denom = R * tanAngle - dy;
+
+                    double vx, vy, vz;
+                    if (denom > 0.1D) {
+                        double vHorizontal = Math.sqrt((gravity * R * R) / (2.0D * denom));
+                        double dragCompensation = 1.2D;
+                        vx = vHorizontal * (dx / R) * dragCompensation;
+                        vz = vHorizontal * (dz / R) * dragCompensation;
+                        vy = vHorizontal * tanAngle * dragCompensation;
+                    } else {
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        double speed = 1.2D;
+                        vx = (dx / dist) * speed;
+                        vy = (dy / dist) * speed;
+                        vz = (dz / dist) * speed;
+                    }
 
                     projectile.setDeltaMovement(vx, vy, vz);
                     this.mob.level().addFreshEntity(projectile);
