@@ -97,7 +97,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 100.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.41D)
+                .add(Attributes.MOVEMENT_SPEED, 0.4D)
                 .add(Attributes.ATTACK_DAMAGE, 10.0D)
                 .add(Attributes.STEP_HEIGHT, 1.1D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
@@ -107,7 +107,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     @Override
     public void tick() {
         super.tick();
-        double speed = this.isAggressive() ? 0.41 : 0.35;
+        double speed = this.isAggressive() ? 0.4 : 0.35;
         var speedAttribute = this.getAttribute(Attributes.MOVEMENT_SPEED);
         if (speedAttribute != null) {
             speedAttribute.setBaseValue(speed);
@@ -120,7 +120,7 @@ public class FarmbotEntity extends Monster implements AnimatedAttacker {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(2, new MoveToRaidCenterGoal(this, 1.0D));
-        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 2.4, 3.4, 90, true, false));
+        this.goalSelector.addGoal(1, new SmartMeleeAttackGoal(this, 1.0D, true, getAttackAnimationLength(), 0.0, 2.4, 3.4, 90, true, false, true));
         this.goalSelector.addGoal(3, new RemoveCropGoal(this, 1.0D, 3));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.7));
         this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));

@@ -5,6 +5,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.phys.Vec3;
+
 import java.util.EnumSet;
 
 @SuppressWarnings("resource")
@@ -25,20 +26,30 @@ public class SmartMeleeAttackGoal extends Goal {
     private final int attackImpactFrame;
     private final boolean dropBlockItems;
     private final boolean shouldStopOnAttack;
+    private final boolean canShootChemicals;
     private LivingEntity pendingTarget = null;
     private boolean isAttacking = false;
     private boolean hasCompletedOneCycle = false;
+    private int pesticideDelay = -1;
+    private int outOfRangeTicks = 0;
 
     public SmartMeleeAttackGoal(PathfinderMob mob, double speedModifier, boolean followingTargetEvenIfNotSeen,
                                 int animationTicks, double approachDistance, double attackReach, double extendedReach,
                                 double attackAngleDegrees, boolean dropBlockItems) {
         this(mob, speedModifier, followingTargetEvenIfNotSeen, animationTicks, approachDistance, attackReach,
-                extendedReach, attackAngleDegrees, dropBlockItems, true);
+                extendedReach, attackAngleDegrees, dropBlockItems, true, false);
     }
 
     public SmartMeleeAttackGoal(PathfinderMob mob, double speedModifier, boolean followingTargetEvenIfNotSeen,
                                 int animationTicks, double approachDistance, double attackReach, double extendedReach,
                                 double attackAngleDegrees, boolean dropBlockItems, boolean shouldStopOnAttack) {
+        this(mob, speedModifier, followingTargetEvenIfNotSeen, animationTicks, approachDistance, attackReach,
+                extendedReach, attackAngleDegrees, dropBlockItems, shouldStopOnAttack, false);
+    }
+
+    public SmartMeleeAttackGoal(PathfinderMob mob, double speedModifier, boolean followingTargetEvenIfNotSeen,
+                                int animationTicks, double approachDistance, double attackReach, double extendedReach,
+                                double attackAngleDegrees, boolean dropBlockItems, boolean shouldStopOnAttack, boolean canShootChemicals) {
         this.mob = mob;
         this.speedModifier = speedModifier;
         this.followingTargetEvenIfNotSeen = followingTargetEvenIfNotSeen;
@@ -48,6 +59,7 @@ public class SmartMeleeAttackGoal extends Goal {
         this.attackAngleCos = Math.cos(Math.toRadians(attackAngleDegrees));
         this.dropBlockItems = dropBlockItems;
         this.shouldStopOnAttack = shouldStopOnAttack;
+        this.canShootChemicals = canShootChemicals;
         this.attackAnimationLength = animationTicks;
         this.attackInterval = animationTicks;
         if (mob instanceof AnimatedAttacker attacker) {
@@ -71,6 +83,7 @@ public class SmartMeleeAttackGoal extends Goal {
     public boolean canContinueToUse() {
         if (isAttacking) return true;
         if (this.mob instanceof AnimatedAttacker aa && aa.getBreakingBlock() != null) return true;
+        if (this.canShootChemicals && this.pesticideDelay > 0) return true;
         return canUse();
     }
 
@@ -86,6 +99,8 @@ public class SmartMeleeAttackGoal extends Goal {
         this.isAttacking = false;
         this.hasCompletedOneCycle = false;
         this.pendingTarget = null;
+        this.pesticideDelay = -1;
+        this.outOfRangeTicks = 0;
     }
 
     @Override
@@ -106,6 +121,8 @@ public class SmartMeleeAttackGoal extends Goal {
         this.hasCompletedOneCycle = false;
         this.attackAnimationTicks = 0;
         this.pendingTarget = null;
+        this.pesticideDelay = -1;
+        this.outOfRangeTicks = 0;
     }
 
     @Override
@@ -213,9 +230,46 @@ public class SmartMeleeAttackGoal extends Goal {
 
         if (target != null && target.isAlive()) {
             this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
-            recalculatePath(target);
 
             double distSqr = this.mob.distanceToSqr(target);
+            if (this.canShootChemicals && distSqr > 16.0D) {
+                outOfRangeTicks++;
+            } else if (this.canShootChemicals) {
+                outOfRangeTicks = 0;
+            }
+
+            if (this.canShootChemicals && outOfRangeTicks > 40 && pesticideDelay < 0 && !isOnCooldown()) {
+                pesticideDelay = 60;
+                this.mob.getNavigation().stop();
+            }
+
+            if (this.canShootChemicals && pesticideDelay > 0) {
+                pesticideDelay--;
+                if (pesticideDelay == 20 && !this.mob.level().isClientSide) {
+                    ChemicalProjectileEntity projectile = new ChemicalProjectileEntity(this.mob, this.mob.level());
+                    projectile.setPos(this.mob.getX(), this.mob.getY() + 1.5D, this.mob.getZ());
+
+                    Vec3 toTarget = target.position().add(0, target.getBbHeight() / 2.0, 0).subtract(projectile.position());
+                    double horizontalDist = Math.sqrt(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
+                    double flightTime = Math.max(horizontalDist / 0.8D, 1.0D);
+
+                    double vx = toTarget.x / flightTime;
+                    double vz = toTarget.z / flightTime;
+                    double vy = (toTarget.y / flightTime) + (0.05D * flightTime);
+
+                    projectile.setDeltaMovement(vx, vy, vz);
+                    this.mob.level().addFreshEntity(projectile);
+                    this.lastCanUseTime = this.mob.level().getGameTime();
+                }
+                return;
+            }
+
+            if (this.canShootChemicals && pesticideDelay == 0) {
+                pesticideDelay = -1;
+                outOfRangeTicks = 0;
+            }
+
+            recalculatePath(target);
 
             if (distSqr <= this.attackReachSq && isInAttackAngle(target)) {
                 if (!isOnCooldown()) {

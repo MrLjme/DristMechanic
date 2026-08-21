@@ -66,4 +66,12 @@ public class ModEntities {
                             .clientTrackingRange(4)
                             .build("red_tape")
             );
+
+    public static final DeferredHolder<EntityType<?>, EntityType<ChemicalProjectileEntity>> CHEMICAL_PROJECTILE =
+            ENTITIES.register("chemical_projectile",
+                    () -> EntityType.Builder.<ChemicalProjectileEntity>of(ChemicalProjectileEntity::new, MobCategory.MISC)
+                            .sized(0.5F, 0.5F)
+                            .clientTrackingRange(4)
+                            .build("chemical_projectile")
+            );
 }

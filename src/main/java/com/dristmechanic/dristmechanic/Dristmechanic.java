@@ -1,5 +1,6 @@
 package com.dristmechanic.dristmechanic;
 
+import com.dristmechanic.dristmechanic.client.ChemicalProjectileRenderer;
 import com.dristmechanic.dristmechanic.client.FarmbotRenderer;
 import com.dristmechanic.dristmechanic.client.FlashParticle;
 import com.dristmechanic.dristmechanic.client.HaybotRenderer;
@@ -9,11 +10,7 @@ import com.dristmechanic.dristmechanic.client.ScrapParticle;
 import com.dristmechanic.dristmechanic.client.TapeRenderer;
 import com.dristmechanic.dristmechanic.client.TapebotRenderer;
 import com.dristmechanic.dristmechanic.client.TotebotRenderer;
-import com.dristmechanic.dristmechanic.client.model.Modelfarmbot;
-import com.dristmechanic.dristmechanic.client.model.Modelhaybot;
-import com.dristmechanic.dristmechanic.client.model.Modelred_tapebot;
-import com.dristmechanic.dristmechanic.client.model.Modeltape;
-import com.dristmechanic.dristmechanic.client.model.Modeltapebot;
+import com.dristmechanic.dristmechanic.client.model.*;
 import com.dristmechanic.dristmechanic.entity.FarmbotEntity;
 import com.dristmechanic.dristmechanic.entity.HaybotEntity;
 import com.dristmechanic.dristmechanic.entity.RedTapebotEntity;
@@ -117,6 +114,7 @@ public class Dristmechanic {
             event.registerEntityRenderer(ModEntities.TAPEBOT.get(), TapebotRenderer::new);
             event.registerEntityRenderer(ModEntities.TAPE.get(), TapeRenderer::new);
             event.registerEntityRenderer(ModEntities.RED_TAPE.get(), RedTapeRenderer::new);
+            event.registerEntityRenderer(ModEntities.CHEMICAL_PROJECTILE.get(), ChemicalProjectileRenderer::new);
         }
 
         @SubscribeEvent
@@ -126,6 +124,7 @@ public class Dristmechanic {
             event.registerLayerDefinition(Modelred_tapebot.LAYER_LOCATION, Modelred_tapebot::createBodyLayer);
             event.registerLayerDefinition(Modeltapebot.LAYER_LOCATION, Modeltapebot::createBodyLayer);
             event.registerLayerDefinition(Modeltape.LAYER_LOCATION, Modeltape::createBodyLayer);
+            event.registerLayerDefinition(ChemicalProjectile.LAYER_LOCATION, ChemicalProjectile::createBodyLayer);
         }
 
         @SubscribeEvent

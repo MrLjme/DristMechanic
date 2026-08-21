@@ -21,6 +21,7 @@ public class ClientModEvents {
         event.registerEntityRenderer(ModEntities.TAPEBOT.get(), TapebotRenderer::new);
         event.registerEntityRenderer(ModEntities.TAPE.get(), TapeRenderer::new);
         event.registerEntityRenderer(ModEntities.RED_TAPE.get(), RedTapeRenderer::new);
+        event.registerEntityRenderer(ModEntities.CHEMICAL_PROJECTILE.get(), ChemicalProjectileRenderer::new);
     }
 
     @SubscribeEvent
