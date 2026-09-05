@@ -23,6 +23,7 @@ import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -86,17 +87,33 @@ public class ChemicalProjectileEntity extends AbstractArrow {
     }
 
     private void spawnChemicalCloud() {
-        AreaEffectCloud cloud = new AreaEffectCloud(this.level(), this.getX(), this.getY(), this.getZ());
+        AreaEffectCloud cloud = new AreaEffectCloud(this.level(), this.getX(), this.getY(), this.getZ()) {
+            @Override
+            public void refreshDimensions() {
+                super.refreshDimensions();
+                float f = this.getRadius();
+                this.setBoundingBox(new AABB(this.getX() - f, this.getY() - 2.5, this.getZ() - f, this.getX() + f, this.getY() + 2.5, this.getZ() + f));
+            }
+
+            @Override
+            public net.minecraft.world.entity.EntityDimensions getDimensions(net.minecraft.world.entity.Pose pose) {
+                return net.minecraft.world.entity.EntityDimensions.scalable(this.getRadius() * 2.0F, 5.0F);
+            }
+        };
         if (this.getOwner() instanceof LivingEntity owner) {
             cloud.setOwner(owner);
         }
-        cloud.setRadius(3.0F);
+        cloud.setRadius(3.5F);
         cloud.setDuration(100);
         cloud.setWaitTime(0);
         cloud.setRadiusPerTick((cloud.getRadius() - cloud.getRadiusOnUse()) / cloud.getDuration());
         cloud.setParticle(new DustParticleOptions(new Vector3f(0.0f, 0.0f, 0.0f), 0.0f));
         PotionContents potionContents = new PotionContents(Optional.empty(), Optional.empty(), List.of(new MobEffectInstance(MobEffects.HARM, 1, 0)));
         cloud.setPotionContents(potionContents);
+
+        float initialRadius = 3.5F;
+        cloud.setBoundingBox(new AABB(cloud.getX() - initialRadius, cloud.getY() - 2.5, cloud.getZ() - initialRadius, cloud.getX() + initialRadius, cloud.getY() + 2.5, cloud.getZ() + initialRadius));
+
         this.level().addFreshEntity(cloud);
     }
 
@@ -131,15 +148,16 @@ public class ChemicalProjectileEntity extends AbstractArrow {
                 for (Entity entity : level.entitiesForRendering()) {
                     if (entity instanceof AreaEffectCloud cloud && cloud.isAlive()) {
                         float radius = cloud.getRadius();
-                        if (radius > 0.1f && level.random.nextFloat() < 0.2f) {
-                            for (int i = 0; i < 4; i++) {
+                        int remainingDuration = cloud.getDuration();
+                        if (remainingDuration > 50 && radius > 0.1f && level.random.nextFloat() < 0.2f) {
+                            for (int i = 0; i < 8; i++) {
                                 double u = level.random.nextDouble();
                                 double v = level.random.nextDouble();
                                 double theta = 2 * Math.PI * u;
                                 double phi = Math.acos(2 * v - 1);
                                 double r = radius * Math.cbrt(level.random.nextDouble());
                                 double xOffset = r * Math.sin(phi) * Math.cos(theta);
-                                double yOffset = r * Math.sin(phi) * Math.sin(theta) * 0.4;
+                                double yOffset = r * Math.sin(phi) * Math.sin(theta) * (5.0 / 7.0);
                                 double zOffset = r * Math.cos(phi);
                                 volumetricParticles.add(new VolumetricParticleData(cloud.getX() + xOffset, cloud.getY() + yOffset, cloud.getZ() + zOffset, level.random));
                             }
@@ -266,7 +284,7 @@ public class ChemicalProjectileEntity extends AbstractArrow {
         public VolumetricParticleData(double x, double y, double z, RandomSource random) {
             this.x = x; this.y = y; this.z = z;
             this.prevX = x; this.prevY = y; this.prevZ = z;
-            this.maxLife = 40 + random.nextInt(30);
+            this.maxLife = 45 + random.nextInt(15);
             this.life = this.maxLife;
             this.prevLife = this.life;
             this.rotX = random.nextFloat() * 360;

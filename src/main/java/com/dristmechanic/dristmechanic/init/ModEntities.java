@@ -70,7 +70,7 @@ public class ModEntities {
     public static final DeferredHolder<EntityType<?>, EntityType<ChemicalProjectileEntity>> CHEMICAL_PROJECTILE =
             ENTITIES.register("chemical_projectile",
                     () -> EntityType.Builder.<ChemicalProjectileEntity>of(ChemicalProjectileEntity::new, MobCategory.MISC)
-                            .sized(0.5F, 0.5F)
+                            .sized(0.25F, 0.25F)
                             .clientTrackingRange(4)
                             .build("chemical_projectile")
             );
